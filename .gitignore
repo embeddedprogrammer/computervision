@@ -1,0 +1,16 @@
+*
+!/**/
+!*.*
+CMakeFiles/
+*.pgm
+*.ppm
+CMakeCache.txt
+cmake_install.cmake
+Makefile.
+*.*~
+vision.h
+ImageLibrary.h
+
+
+
+
