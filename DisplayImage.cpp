@@ -4,6 +4,7 @@
 #include <iostream>
 #include "graph.h"
 #include <math.h>
+#include <vector>
 
 using namespace cv;
 using namespace std;
@@ -136,9 +137,6 @@ GraphType* graph;
 void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 {
 	if(event == EVENT_LBUTTONDOWN)
-//		cout <<   "B: " << (int)image2.at<Vec3b>(y,x)[0]
-//			 << ", G: " << (int)image2.at<Vec3b>(y,x)[1]
-//			 << ", R: " << (int)image2.at<Vec3b>(y,x)[2] << endl;
 		mouseDown = 1;
 	else if(event == EVENT_RBUTTONDOWN)
 		mouseDown = 2;
@@ -146,7 +144,7 @@ void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 		mouseDown = 0;
 	else if(event == EVENT_RBUTTONUP)
 		mouseDown = 0;
-	if (mouseDown) //EVENT_MOUSEMOVE
+	if (mouseDown)
 	{
 		if(mouseDown == 1)
 			addSeed(graph, originalImage, x, y, true);
@@ -161,6 +159,18 @@ void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 
 int main(int argc, char** argv )
 {
+	// constructors used in the same order as described above:
+	std::vector<int> v;
+	v.push_back(4);
+	v.push_back(5);
+	for(int i = 0; i < v.size(); i++)
+	{
+		printf("Element %d\n", v.at(i));
+	}
+
+	return 0;
+
+
 	if ( argc != 2 )
 	{
 		printf("usage: DisplayImage.out <Image_Path>\n");
@@ -191,34 +201,7 @@ int main(int argc, char** argv )
 			break;
 	}
 	delete graph;
-
-
-//	while(true)
-//	{
-//		char c = waitKey(0);
-//		if(c == 'p')
-//			createGraph(originalImage);
-//
-//		else
-//		{
-//			printf("Character %c %d\n", c, (int)c);
-//			break;
-//		}
-//
-//
-////		if(c == ENTER)
-////		{
-////			cout << "Line: " << lineInput << endl;
-////			lineInput = "";
-////		}
-////		else
-////		{
-////			lineInput += c;
-////		}
-//	}
-
 	return 0;
-
 }
 
 
