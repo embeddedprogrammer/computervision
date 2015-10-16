@@ -11,6 +11,17 @@ using namespace std;
 
 // GRAPH CUT
 
+typedef Graph<int,int,int> GraphType;
+
+typedef struct
+{
+	int x, y;
+	bool foreground;
+	cv::Vec<unsigned char, 3> color;
+} Seed;
+
+typedef std::vector<Seed> SeedType;
+
 int getNodeId(Mat image, int x, int y)
 {
 	return (image.cols * y) + x;
@@ -31,13 +42,15 @@ int maxVal3(int val1, int val2, int val3)
 	return maxVal(maxVal(val1, val2), val3);
 }
 
-int getCost(cv::Vec<unsigned char, 3> val1, cv::Vec<unsigned char, 3> val2)
+int getDiffRGB(cv::Vec<unsigned char, 3> val1, cv::Vec<unsigned char, 3> val2)
 {
-	int diff = maxVal3(abs(val1[0] - val2[0]), abs(val1[1] - val2[1]), abs(val1[2] - val2[2]));
-	return 255 - diff;
+	return maxVal3(abs(val1[0] - val2[0]), abs(val1[1] - val2[1]), abs(val1[2] - val2[2]));
 }
 
-typedef Graph<int,int,int> GraphType;
+int getCost(cv::Vec<unsigned char, 3> val1, cv::Vec<unsigned char, 3> val2)
+{
+	return 255 - getDiffRGB(val1, val2);
+}
 
 int addEdge(GraphType* g, Mat image, int x, int y, int dx, int dy)
 {
@@ -46,15 +59,59 @@ int addEdge(GraphType* g, Mat image, int x, int y, int dx, int dy)
 	return cost;
 }
 
-// Create the graph. Add nodes and edges (this part can be done without any user interaction)
-GraphType* createGraph(Mat image)
+typedef struct
+{
+	int df, db;
+} DistFB;
+
+int print = 0;
+
+DistFB findDistFB(cv::Vec<unsigned char, 3> val, SeedType seeds)
+{
+	int minDistForeground = 255;
+	int minDistBackground = 255;
+	for(int i = 0; i < seeds.size(); i++)
+	{
+		Seed s = seeds.at(i);
+		int dist = getDiffRGB(val, s.color);
+		if(s.foreground)
+		{
+			if(dist < minDistForeground)
+				minDistForeground = dist;
+		}
+		else
+		{
+			if(dist < minDistBackground)
+				minDistBackground = dist;
+		}
+	}
+	return (DistFB){minDistForeground, minDistBackground};
+}
+
+void displayResults(Mat image, SeedType seeds)
 {
 	GraphType* g = new GraphType(image.rows * image.cols, 2 * image.rows * image.cols - image.rows - image.cols);
 
+	Mat priors1 = Mat::zeros(image.size(), image.type());
+	Mat priors2 = Mat::zeros(image.size(), image.type());
+	// Create nodes and initialize the tn links based on prior estimation
 	for(int y = 0; y < image.rows; y++)
 		for(int x = 0; x < image.cols; x++)
+		{
 			g->add_node();
+			DistFB d = findDistFB(image.at<Vec3b>(y,x), seeds);
+			g->add_tweights(getNodeId(image, x, y), 10*d.db/(d.df + d.db), 10*d.df/(d.df + d.db));
+			priors1.at<Vec3b>(y,x)[0] = d.df;
+			priors1.at<Vec3b>(y,x)[1] = d.df;
+			priors1.at<Vec3b>(y,x)[2] = d.df;
+			priors2.at<Vec3b>(y,x)[0] = d.db;
+			priors2.at<Vec3b>(y,x)[1] = d.db;
+			priors2.at<Vec3b>(y,x)[2] = d.db;
+		}
+//	imshow("Dist to Foreground", priors1);
+//	imshow("Dist to Background", priors2);
 
+	// Add edges with corresponding cost
 	Mat newImage = Mat::zeros(image.size(), image.type());
 	for(int y = 0; y < image.rows; y++)
 		for(int x = 0; x < image.cols; x++)
@@ -69,59 +126,58 @@ GraphType* createGraph(Mat image)
 			newImage.at<Vec3b>(y,x)[1] = c;
 			newImage.at<Vec3b>(y,x)[2] = c;
 		}
-	imshow("Cost", newImage);
-	return g;
-}
+	//imshow("Cost", newImage);
 
-void displayResults(Mat image, GraphType* g)
-{
+	// Add user specified seeds
+	for(int i = 0; i < seeds.size(); i++)
+	{
+		Seed s = seeds.at(i);
+		if(s.foreground	== 1)
+			g->add_tweights(getNodeId(image, s.x, s.y), 1000000, 0);
+		else
+			g->add_tweights(getNodeId(image, s.x, s.y), 0, 1000000);
+	}
+
+
+
 	int flow = g->maxflow();
 
 	printf("Flow = %d\n", flow);
 
-	Mat newImage = Mat::zeros(image.size(), image.type());
+	Mat result = Mat::zeros(image.size(), image.type());
 	for( int y = 0; y < image.rows; y++ )
 		for( int x = 0; x < image.cols; x++ )
 		{
 			if(g->what_segment(getNodeId(image, x, y)) == GraphType::SOURCE)
 			{
-//				newImage.at<Vec3b>(y,x)[0] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[0]);
-//				newImage.at<Vec3b>(y,x)[1] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[1]);
-//				newImage.at<Vec3b>(y,x)[2] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[2]);
-				newImage.at<Vec3b>(y,x)[0] = 255;
-				newImage.at<Vec3b>(y,x)[1] = 255;
-				newImage.at<Vec3b>(y,x)[2] = 255;
+//				result.at<Vec3b>(y,x)[0] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[0]);
+//				result.at<Vec3b>(y,x)[1] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[1]);
+//				result.at<Vec3b>(y,x)[2] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[2]);
+				result.at<Vec3b>(y,x)[0] = 255;
+				result.at<Vec3b>(y,x)[1] = 255;
+				result.at<Vec3b>(y,x)[2] = 255;
 			}
 			else
 			{
-				newImage.at<Vec3b>(y,x)[0] = 0;
-				newImage.at<Vec3b>(y,x)[1] = 0;
-				newImage.at<Vec3b>(y,x)[2] = 0;
-//				newImage.at<Vec3b>(y,x)[0] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[0]) / 3;
-//				newImage.at<Vec3b>(y,x)[1] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[1]) / 3;
-//				newImage.at<Vec3b>(y,x)[2] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[2]) / 3;
+				result.at<Vec3b>(y,x)[0] = 0;
+				result.at<Vec3b>(y,x)[1] = 0;
+				result.at<Vec3b>(y,x)[2] = 0;
+//				result.at<Vec3b>(y,x)[0] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[0]) / 3;
+//				result.at<Vec3b>(y,x)[1] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[1]) / 3;
+//				result.at<Vec3b>(y,x)[2] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[2]) / 3;
 			}
 		}
 
-	imshow("New Image", newImage);
+	imshow("New Image", result);
 }
 
 // Priors
 
-cv::Vec<unsigned char, 3> f, b;
+SeedType seeds;
 
-void addSeed(GraphType* g, Mat image, int x, int y, bool foreground)
+void addSeed(GraphType* g, Mat image, int x, int y, bool foreground, cv::Vec<unsigned char, 3> color)
 {
-	if(foreground == 1)
-	{
-		g->add_tweights(getNodeId(image, x, y), 10000, 0);
-		f = image.at<Vec3b>(y,x);
-	}
-	else
-	{
-		g->add_tweights(getNodeId(image, x, y), 0, 10000);
-		b = image.at<Vec3b>(y,x);
-	}
+	seeds.push_back((Seed){x, y, foreground, color});
 }
 
 //OPEN CV GUI INTERACTION
@@ -147,9 +203,9 @@ void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 	if (mouseDown)
 	{
 		if(mouseDown == 1)
-			addSeed(graph, originalImage, x, y, true);
+			addSeed(graph, originalImage, x, y, true, image2.at<Vec3b>(y,x));
 		else
-			addSeed(graph, originalImage, x, y, false);
+			addSeed(graph, originalImage, x, y, false, image2.at<Vec3b>(y,x));
 
 		Scalar color = (mouseDown == 1) ? Scalar(255, 0, 0) : Scalar(0, 0, 255);
 		circle(image2, Point(x, y), 3, color, CV_FILLED);
@@ -159,18 +215,6 @@ void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 
 int main(int argc, char** argv )
 {
-	// constructors used in the same order as described above:
-	std::vector<int> v;
-	v.push_back(4);
-	v.push_back(5);
-	for(int i = 0; i < v.size(); i++)
-	{
-		printf("Element %d\n", v.at(i));
-	}
-
-	return 0;
-
-
 	if ( argc != 2 )
 	{
 		printf("usage: DisplayImage.out <Image_Path>\n");
@@ -191,12 +235,10 @@ int main(int argc, char** argv )
 
 	std::string lineInput = "";
 
-	graph = createGraph(originalImage);
-
 	while(true)
 	{
 		char c = waitKey(0);
-		displayResults(originalImage, graph);
+		displayResults(originalImage, seeds);
 		if(c == ESC)
 			break;
 	}
