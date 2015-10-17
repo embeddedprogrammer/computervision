@@ -53,12 +53,30 @@ int getCost(cv::Vec<unsigned char, 3> val1, cv::Vec<unsigned char, 3> val2)
 	return 254 / (getDiffHSV(val1, val2) + 1);
 }
 
-int addEdge(GraphType* g, Mat image, int x, int y, int dx, int dy, int lambda)
+int distanceToNearestSeed(SeedType seeds, Mat image, int x, int y)
 {
-	int cost = getCost(image.at<Vec3b>(y, x), image.at<Vec3b>(y + dy, x + dx));
-	int modifiedCost = cost * (100 + lambda) / 100;
+	int minDist = image.rows + image.cols;
+	for(int i = 0; i < seeds.size(); i++)
+	{
+		Seed s = seeds.at(i);
+		int dx = abs(s.x - x);
+		int dy = abs(s.y - y);
+		int dist = sqrt(dx*dx + dy*dy);
+
+		if(dist < minDist)
+			minDist = dist;
+	}
+	return minDist;
+}
+
+int addEdge(GraphType* g, SeedType seeds, Mat image, int x, int y, int dx, int dy, int lambda)
+{
+	//int fractPerimeter = (image.rows + image.cols)/8;
+	//int distToSeed = distanceToNearestSeed(seeds, image, x, y);
+	int cost = getCost(image.at<Vec3b>(y, x), image.at<Vec3b>(y + dy, x + dx)); // * fractPerimeter / (distToSeed + 1);
+	int modifiedCost = cost * 10 * (100 + lambda) / 100;
 	g->add_edge(getNodeId(image, x, y), getNodeId(image, x + dx, y + dy), modifiedCost, modifiedCost);
-	return cost;
+	return cost / 10;
 }
 
 typedef struct
@@ -90,7 +108,6 @@ DistFB findDistFB(cv::Vec<unsigned char, 3> val, SeedType seeds)
 	return (DistFB){minDistForeground, minDistBackground};
 }
 
-void displayResults(Mat image, Mat hsv, SeedType seeds)
 void displayResults(Mat image, Mat hsv, SeedType seeds, int lambda)
 {
 	GraphType* g = new GraphType(image.rows * image.cols, 2 * image.rows * image.cols - image.rows - image.cols);
@@ -105,7 +122,7 @@ void displayResults(Mat image, Mat hsv, SeedType seeds, int lambda)
 			DistFB d = findDistFB(hsv.at<Vec3b>(y,x), seeds);
 			int sourceWeight = 100*d.db/(d.df + d.db + 1);
 			int sinkWeight = 100*d.df/(d.df + d.db + 1);
-			g->add_tweights(getNodeId(image, x, y), sourceWeight * (100 - lambda) / 100, sinkWeight * (100 - lambda) / 100);
+			g->add_tweights(getNodeId(image, x, y), sourceWeight * (100 - lambda) / 1000, sinkWeight * (100 - lambda) / 1000);
 			priors1.at<Vec3b>(y,x)[0] = sourceWeight;
 			priors1.at<Vec3b>(y,x)[1] = sourceWeight;
 			priors1.at<Vec3b>(y,x)[2] = sourceWeight;
@@ -115,9 +132,6 @@ void displayResults(Mat image, Mat hsv, SeedType seeds, int lambda)
 		}
 	imwrite("weightFg.jpg", priors1);
 	imwrite("weightBg.jpg", priors2);
-	imshow("weightFg", priors1);
-	imshow("weightBg", priors2);
-
 
 	// Add edges with corresponding cost
 	Mat cost = Mat::zeros(image.size(), image.type());
@@ -126,13 +140,13 @@ void displayResults(Mat image, Mat hsv, SeedType seeds, int lambda)
 		{
 			int c1, c2 = 0;
 			if(x < image.cols - 1)
-				c1 = addEdge(g, hsv, x, y, 1, 0, lambda);
+				c1 = addEdge(g, seeds, hsv, x, y, 1, 0, lambda);
 			if(y < image.rows - 1)
-				c2 = addEdge(g, hsv, x, y, 0, 1, lambda);
+				c2 = addEdge(g, seeds, hsv, x, y, 0, 1, lambda);
 			int c = (c1 + c2) / 2;
-			cost.at<Vec3b>(y,x)[0] = c;
-			cost.at<Vec3b>(y,x)[1] = c;
-			cost.at<Vec3b>(y,x)[2] = c;
+			cost.at<Vec3b>(y,x)[0] = saturate_cast<uchar>(c);
+			cost.at<Vec3b>(y,x)[1] = saturate_cast<uchar>(c);
+			cost.at<Vec3b>(y,x)[2] = saturate_cast<uchar>(c);
 		}
 	imwrite("cost.jpg", cost);
 	imshow("cost", cost);
@@ -309,6 +323,3 @@ int main(int argc, char** argv )
 	delete graph;
 	return 0;
 }
-
-
-
