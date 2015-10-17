@@ -49,7 +49,7 @@ int getDiffRGB(cv::Vec<unsigned char, 3> val1, cv::Vec<unsigned char, 3> val2)
 
 int getCost(cv::Vec<unsigned char, 3> val1, cv::Vec<unsigned char, 3> val2)
 {
-	return 255 - getDiffRGB(val1, val2);
+	return 100 / (getDiffRGB(val1, val2) + 1);
 }
 
 int addEdge(GraphType* g, Mat image, int x, int y, int dx, int dy)
@@ -100,19 +100,21 @@ void displayResults(Mat image, SeedType seeds)
 		{
 			g->add_node();
 			DistFB d = findDistFB(image.at<Vec3b>(y,x), seeds);
-			g->add_tweights(getNodeId(image, x, y), 10*d.db/(d.df + d.db), 10*d.df/(d.df + d.db));
-			priors1.at<Vec3b>(y,x)[0] = d.df;
-			priors1.at<Vec3b>(y,x)[1] = d.df;
-			priors1.at<Vec3b>(y,x)[2] = d.df;
-			priors2.at<Vec3b>(y,x)[0] = d.db;
-			priors2.at<Vec3b>(y,x)[1] = d.db;
-			priors2.at<Vec3b>(y,x)[2] = d.db;
+			int sourceWeight = 10*d.db/(d.df + d.db + 1);
+			int sinkWeight = 10*d.df/(d.df + d.db + 1);
+			g->add_tweights(getNodeId(image, x, y), sourceWeight, sinkWeight);
+			priors1.at<Vec3b>(y,x)[0] = sourceWeight;
+			priors1.at<Vec3b>(y,x)[1] = sourceWeight;
+			priors1.at<Vec3b>(y,x)[2] = sourceWeight;
+			priors2.at<Vec3b>(y,x)[0] = sinkWeight;
+			priors2.at<Vec3b>(y,x)[1] = sinkWeight;
+			priors2.at<Vec3b>(y,x)[2] = sinkWeight;
 		}
-//	imshow("Dist to Foreground", priors1);
-//	imshow("Dist to Background", priors2);
+	imwrite("WeightFg.jpg", priors1);
+	imwrite("WeightBg.jpg", priors2);
 
 	// Add edges with corresponding cost
-	Mat newImage = Mat::zeros(image.size(), image.type());
+	Mat cost = Mat::zeros(image.size(), image.type());
 	for(int y = 0; y < image.rows; y++)
 		for(int x = 0; x < image.cols; x++)
 		{
@@ -121,12 +123,12 @@ void displayResults(Mat image, SeedType seeds)
 				c1 = addEdge(g, image, x, y, 1, 0);
 			if(y < image.rows - 1)
 				c2 = addEdge(g, image, x, y, 0, 1);
-			int c = minVal(c1, c2);
-			newImage.at<Vec3b>(y,x)[0] = c;
-			newImage.at<Vec3b>(y,x)[1] = c;
-			newImage.at<Vec3b>(y,x)[2] = c;
+			int c = (c1 + c2) / 2;
+			cost.at<Vec3b>(y,x)[0] = c;
+			cost.at<Vec3b>(y,x)[1] = c;
+			cost.at<Vec3b>(y,x)[2] = c;
 		}
-	//imshow("Cost", newImage);
+	imwrite("cost.jpg", cost);
 
 	// Add user specified seeds
 	for(int i = 0; i < seeds.size(); i++)
@@ -138,12 +140,8 @@ void displayResults(Mat image, SeedType seeds)
 			g->add_tweights(getNodeId(image, s.x, s.y), 0, 1000000);
 	}
 
-
-
+	// Calculate max-flow min-cut.
 	int flow = g->maxflow();
-
-	printf("Flow = %d\n", flow);
-
 	Mat result = Mat::zeros(image.size(), image.type());
 	for( int y = 0; y < image.rows; y++ )
 		for( int x = 0; x < image.cols; x++ )
@@ -168,7 +166,8 @@ void displayResults(Mat image, SeedType seeds)
 			}
 		}
 
-	imshow("New Image", result);
+	imshow("result", result);
+	imwrite("result.jpg", result);
 }
 
 // Priors
@@ -238,9 +237,9 @@ int main(int argc, char** argv )
 	while(true)
 	{
 		char c = waitKey(0);
-		displayResults(originalImage, seeds);
 		if(c == ESC)
 			break;
+		displayResults(originalImage, seeds);
 	}
 	delete graph;
 	return 0;
