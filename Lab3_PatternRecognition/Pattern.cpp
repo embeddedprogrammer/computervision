@@ -19,8 +19,9 @@ Scalar getColor(int i)
 	Scalar c6 = Scalar(255, 0, 0);
 	Scalar c7 = Scalar(128, 0, 128);
 	Scalar c8 = Scalar(128, 128, 128);
-	Scalar c[] = {c0, c1, c2, c3, c4, c5, c6, c7, c8};
-	if(i <= 8)
+	Scalar c9 = Scalar(255, 255, 255);
+	Scalar c[] = {c0, c1, c2, c3, c4, c5, c6, c7, c8, c9};
+	if(i <= 9)
 		return c[i];
 	else
 		return Scalar(rng.uniform(0, 255), rng.uniform(0, 255), rng.uniform(0, 255));
@@ -28,7 +29,7 @@ Scalar getColor(int i)
 
 int getColorNumber(Vec3b v)
 {
-	for(int i = 0; i < 8; i++)
+	for(int i = 0; i <= 9; i++)
 	{
 		Scalar c = getColor(i);
 		if(c.val[0] == v[0] && c.val[1] == v[1] && c.val[2] == v[2])
@@ -39,12 +40,11 @@ int getColorNumber(Vec3b v)
 
 string getShape(int i)
 {
-	//string s[] = {"Rectangle", "Triangle", "Circle", "Millstone", "Oval", ""};
-	string s[] = {"", "Millstone", "+", "Oval", "E", "F"};
-	if(i <= 5)
+	string s[] = {"Rectangle", "Triangle", "Circle", "Millstone", "Oval", "??", "+", "Oval", "E", "F"};
+	if(i <= 9)
 		return s[i];
 	else
-		return "";
+		return "?";
 }
 
 typedef struct
@@ -52,6 +52,8 @@ typedef struct
 	double scaledPerimeter;
 	double eccentricity;
 	double rectDensity;
+	double hullDensity;
+	double density;
 	vector<Point> hull;
 	Point center;
 	Vec3b shapeColor;
@@ -67,6 +69,7 @@ features_t getContourFeatures(vector<vector<Point> > contours, vector<Vec4i> hie
 	double m01 = mm.m01;
 	double m20 = mm.m20;
 	double m02 = mm.m02;
+	double outsideContourMass = m00;
 	if(hierarchy[i][2] != -1) //Subtract hole from mass.
 	{
 		mm = moments((Mat)contours[hierarchy[i][2]]);
@@ -82,109 +85,133 @@ features_t getContourFeatures(vector<vector<Point> > contours, vector<Vec4i> hie
 	double centerY = (m01 / m00);
 	double sigma_x = sqrt(m20 / m00 - centerX * centerX);
 	double sigma_y = sqrt(m02 / m00 - centerY * centerY);
-	double eccentricity = sqrt((sigma_x > sigma_y) ? (sigma_x / sigma_y) : (sigma_y / sigma_x));
 	double perimeter = arcLength((Mat)contours[i], true);
 	features_t features;
 	features.scaledPerimeter = perimeter / sqrt(mass);
-	features.eccentricity = eccentricity;
 	features.center = Point(centerX, centerY);
 	features.shapeColor = ans.at<Vec3b>(features.center.y, features.center.x);
 	features.shapeNumber = getColorNumber(features.shapeColor);
 	features.shape = getShape(features.shapeNumber);
+	features.density = mass / outsideContourMass;
 
 	// Find the convex hull object
 	vector<Point> hull;
 	convexHull(Mat(contours[i]), hull);
 	features.hull = hull;
+	features.hullDensity = mass / moments((Mat)hull).m00;
 
 	// Find the rectangle object
     RotatedRect rect = minAreaRect(contours[i]);
 	features.rectDensity = moments((Mat)hull).m00 / rect.size.area();
+	double eccentricity = (rect.size.width > rect.size.height) ? (rect.size.width / rect.size.height) : (rect.size.height / rect.size.width);
+	features.eccentricity = eccentricity;
 
 	return features;
 }
 
-double scale(double value, double minIn, double maxIn, double minOut, double maxOut)
-{
-	return (value-minIn)/(maxIn-minIn)*(maxOut-minOut) + minOut;
-}
+#define VERTICAL_INNER_SPACING 150
+#define HORIZONTAL_INNER_SPACING 150
+#define VERTICAL_OUTER_SPACING 200
+#define HORIZONTAL_OUTER_SPACING 200
+#define MAX_OBJECTS_PER_CLASS 15
+#define MAX_OBJECT_CLASSES 10
+#define ORGANIZATION_SPACE_WIDTH (HORIZONTAL_OUTER_SPACING*2 + HORIZONTAL_INNER_SPACING*(MAX_OBJECTS_PER_CLASS - 1))
+#define ORGANIZATION_SPACE_HEIGHT (VERTICAL_OUTER_SPACING*2 + VERTICAL_INNER_SPACING*(MAX_OBJECT_CLASSES - 1))
 
-int main( int argc, char** argv )
+int processImage(string imageFileName, string answerFileName, string matlabLabel, bool invert, FILE *file, int* classCount, Mat drawing)
 {
-	if (argc != 3)
-	{
-		printf("usage: Pattern <Image_Path> <Image ans>\n");
-		return -1;
-	}
-
 	// Read image
 	Mat img, ans, img_th, img_cnc;
-	img = imread(argv[1], 0);
-	ans = imread(argv[2]);
+	printf("Image: %s, Answer: %s\n", imageFileName.c_str(), answerFileName.c_str());
+	img = imread(imageFileName, 0);
+	ans = imread(answerFileName);
 
 	// Threshold image
-	//inRange(img, 0, 100, img_th);
-	inRange(img, 101, 255, img_th);
+	if(invert)
+		inRange(img, 0, 100, img_th);
+	else
+		inRange(img, 101, 255, img_th);
 
 	// Find contours
 	vector<vector<Point> > contours;
 	vector<Vec4i> hierarchy;
 	Mat img_copy = img_th.clone();
-	findContours(img_copy, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE);
+	findContours(img_copy, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE); //The RETR_COMP will arrange all contours into a 2-level hierarchy.
 
 	// Draw contours and plot center of mass
-	Mat drawing = Mat::zeros(img.size(), CV_8UC3);
-	Mat featureSpace = Mat::zeros(img.size(), CV_8UC3);
 	int objects = 0;
 	features_t FeaturesArray[20];
-	for(int i = 0; i< contours.size(); i++)
+
+	for(int i = 0; i < contours.size(); i++)
 	{
-		if(hierarchy[i][3] == -1) //hierarchy[idx][{0,1,2,3}]={next contour (same level), previous contour (same level), child contour, parent contour}
+		if(hierarchy[i][3] == -1) // Only use objects, not holes
 		{
 			Scalar color = getColor(objects);
-			drawContours(drawing, contours, i, color, 1, 8, hierarchy, 0, Point());
 			features_t features = getContourFeatures(contours, hierarchy, ans, i);
+
+			int centerX = HORIZONTAL_OUTER_SPACING + HORIZONTAL_INNER_SPACING * classCount[features.shapeNumber];
+			int centerY = VERTICAL_OUTER_SPACING + VERTICAL_INNER_SPACING * features.shapeNumber;
+			int offsetX = -features.center.x + centerX;
+			int offsetY = -features.center.y + centerY;
+
+			classCount[features.shapeNumber]++;
+
+			drawContours(drawing, contours, i, (Scalar)features.shapeColor, 4, 8, hierarchy, 1, Point(offsetX, offsetY));
+
 			FeaturesArray[objects] = features;
-			printf("Object %d Scaled perimeter %.3f Eccentricity %.2f Rect Density %.2f Shape: %s\n", objects, features.scaledPerimeter, features.eccentricity, features.rectDensity, features.shape.c_str());
-			circle(drawing, features.center, 2, color);
 
-			//Draw convex hull
-			vector<vector<Point> > hullArray = vector<vector<Point> >(1);
-			hullArray[0] = features.hull;
-	        drawContours(drawing, hullArray, 0, color, 1);
+			//printf("Object %d Shape number %d Class count: %d\n", objects, features.shapeNumber, classCount[features.shapeNumber]);
+//			circle(drawing, features.center, 2, color);
 
-	        RotatedRect rect = minAreaRect(contours[i]);
-	        Point2f pts[4];
-	        rect.points(pts);
-			for( int j = 0; j < 4; j++)
-				line(drawing, pts[j], pts[(j+1)%4], color, 1, 8);
-
-	        //Draw rectanglular bounding box
-
-
-//			int fx = (int)scale(features.eccentricity, 1, 1.5, 0, img.rows);
-//			int fy = (int)scale(features.scaledPerimeter, 3, 8, 0, img.cols);
-//			circle(featureSpace, Point(fx, fy), 2, (Scalar)features.shapeColor);
+//			//Draw convex hull
+//			vector<vector<Point> > hullArray = vector<vector<Point> >(1);
+//			hullArray[0] = features.hull;
+//	        drawContours(drawing, hullArray, 0, color, 1);
+//
+//	        // Draw rectangular bouding box
+//	        RotatedRect rect = minAreaRect(contours[i]);
+//	        Point2f pts[4];
+//	        rect.points(pts);
+//			for( int j = 0; j < 4; j++)
+//				line(drawing, pts[j], pts[(j+1)%4], color, 1, 8);
 			objects++;
 		}
 	}
 
 	// Plot in matlab
-	FILE *file = fopen("plotFeatures.m", "w");
-	fprintf(file, "hold on\n");
+	fprintf(file, "%s = [ ...\n", matlabLabel.c_str());
 	for(int i = 0; i < objects; i++)
 	{
 		features_t features = FeaturesArray[i];
-		fprintf(file, "plot3(%f, %f, %f, '*', 'Color', [%f %f %f]);\n", features.eccentricity, features.rectDensity, features.scaledPerimeter,
-				((double)features.shapeColor.val[2]) / 255,
-				((double)features.shapeColor.val[1]) / 255,
-				((double)features.shapeColor.val[0]) / 255);
+		fprintf(file, "%f %f %f %f %f %d; ...\n", features.eccentricity, features.rectDensity, features.scaledPerimeter, features.hullDensity, features.density, features.shapeNumber);
 	}
+	fprintf(file, "];\n\n");
+
+	//imshow("Thresholded", img_th);
+}
+
+int main( int argc, char** argv )
+{
+	Mat drawing = Mat::zeros(Size(ORGANIZATION_SPACE_WIDTH, ORGANIZATION_SPACE_HEIGHT), CV_8UC3);
+
+	int classCount[MAX_OBJECT_CLASSES];
+	for(int i = 0; i < MAX_OBJECT_CLASSES; i++)
+		classCount[i] = 0; //Apparently you can't rely on C++ setting arrays to zero.
+
+	FILE* file = fopen("plotFeatures.m", "w");
+	processImage("shapes.pgm", "Ashapes.png", "shapes", true, file, classCount, drawing);
+	processImage("testshapes.pgm", "Atestshapes.png", "testshapes", true, file, classCount, drawing);
+	processImage("train1.pgm", "Atrain1.png", "train1", false, file, classCount, drawing);
+	processImage("train2.pgm", "Atrain2.png", "train2", false, file, classCount, drawing);
+	processImage("match1.pgm", "Amatch1.png", "match1", false, file, classCount, drawing);
+	processImage("match2.pgm", "Amatch2.png", "match2", false, file, classCount, drawing);
 	fclose(file);
 
+	Mat resizedImage;
+	resize(drawing, resizedImage, Size(drawing.cols / 3, drawing.rows / 3));
+	imshow("Contours", resizedImage);
+	imwrite("result.png", drawing);
 
-	imshow("Thresholded", img_th);
-	imshow("Contours", drawing);
 	while(true)
 	{
 		char c = waitKey(0);
