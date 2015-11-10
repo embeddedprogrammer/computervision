@@ -34,14 +34,15 @@ int getColorNumber(Vec3b v)
 		if(c.val[0] == v[0] && c.val[1] == v[1] && c.val[2] == v[2])
 			return i;
 	}
-	return -1;
+	return 0;
 }
 
-char* getShape(int i)
+string getShape(int i)
 {
-	char* c[] = {"Rectangle", "Triangle", "Circle", "Millstone", "Oval"};
-	if(i <= 4)
-		return c[i];
+	//string s[] = {"Rectangle", "Triangle", "Circle", "Millstone", "Oval", ""};
+	string s[] = {"", "Millstone", "+", "Oval", "E", "F"};
+	if(i <= 5)
+		return s[i];
 	else
 		return "";
 }
@@ -50,8 +51,12 @@ typedef struct
 {
 	double scaledPerimeter;
 	double eccentricity;
+	double rectDensity;
+	vector<Point> hull;
 	Point center;
-	char* shape;
+	Vec3b shapeColor;
+	int shapeNumber;
+	string shape;
 } features_t;
 
 features_t getContourFeatures(vector<vector<Point> > contours, vector<Vec4i> hierarchy, Mat ans, int i)
@@ -83,8 +88,25 @@ features_t getContourFeatures(vector<vector<Point> > contours, vector<Vec4i> hie
 	features.scaledPerimeter = perimeter / sqrt(mass);
 	features.eccentricity = eccentricity;
 	features.center = Point(centerX, centerY);
-	features.shape = getShape(getColorNumber(ans.at<Vec3b>(features.center.y, features.center.x)));
+	features.shapeColor = ans.at<Vec3b>(features.center.y, features.center.x);
+	features.shapeNumber = getColorNumber(features.shapeColor);
+	features.shape = getShape(features.shapeNumber);
+
+	// Find the convex hull object
+	vector<Point> hull;
+	convexHull(Mat(contours[i]), hull);
+	features.hull = hull;
+
+	// Find the rectangle object
+    RotatedRect rect = minAreaRect(contours[i]);
+	features.rectDensity = moments((Mat)hull).m00 / rect.size.area();
+
 	return features;
+}
+
+double scale(double value, double minIn, double maxIn, double minOut, double maxOut)
+{
+	return (value-minIn)/(maxIn-minIn)*(maxOut-minOut) + minOut;
 }
 
 int main( int argc, char** argv )
@@ -101,7 +123,8 @@ int main( int argc, char** argv )
 	ans = imread(argv[2]);
 
 	// Threshold image
-	inRange(img, 0, 100, img_th);
+	//inRange(img, 0, 100, img_th);
+	inRange(img, 101, 255, img_th);
 
 	// Find contours
 	vector<vector<Point> > contours;
@@ -109,8 +132,9 @@ int main( int argc, char** argv )
 	Mat img_copy = img_th.clone();
 	findContours(img_copy, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE);
 
-	/// Draw contours and plot center of mass
+	// Draw contours and plot center of mass
 	Mat drawing = Mat::zeros(img.size(), CV_8UC3);
+	Mat featureSpace = Mat::zeros(img.size(), CV_8UC3);
 	int objects = 0;
 	features_t FeaturesArray[20];
 	for(int i = 0; i< contours.size(); i++)
@@ -121,11 +145,43 @@ int main( int argc, char** argv )
 			drawContours(drawing, contours, i, color, 1, 8, hierarchy, 0, Point());
 			features_t features = getContourFeatures(contours, hierarchy, ans, i);
 			FeaturesArray[objects] = features;
-			printf("Object %d Scaled perimeter %.3f Eccentricity %.2f Shape: %s\n", objects, features.scaledPerimeter, features.eccentricity, features.shape);
+			printf("Object %d Scaled perimeter %.3f Eccentricity %.2f Rect Density %.2f Shape: %s\n", objects, features.scaledPerimeter, features.eccentricity, features.rectDensity, features.shape.c_str());
 			circle(drawing, features.center, 2, color);
+
+			//Draw convex hull
+			vector<vector<Point> > hullArray = vector<vector<Point> >(1);
+			hullArray[0] = features.hull;
+	        drawContours(drawing, hullArray, 0, color, 1);
+
+	        RotatedRect rect = minAreaRect(contours[i]);
+	        Point2f pts[4];
+	        rect.points(pts);
+			for( int j = 0; j < 4; j++)
+				line(drawing, pts[j], pts[(j+1)%4], color, 1, 8);
+
+	        //Draw rectanglular bounding box
+
+
+//			int fx = (int)scale(features.eccentricity, 1, 1.5, 0, img.rows);
+//			int fy = (int)scale(features.scaledPerimeter, 3, 8, 0, img.cols);
+//			circle(featureSpace, Point(fx, fy), 2, (Scalar)features.shapeColor);
 			objects++;
 		}
 	}
+
+	// Plot in matlab
+	FILE *file = fopen("plotFeatures.m", "w");
+	fprintf(file, "hold on\n");
+	for(int i = 0; i < objects; i++)
+	{
+		features_t features = FeaturesArray[i];
+		fprintf(file, "plot3(%f, %f, %f, '*', 'Color', [%f %f %f]);\n", features.eccentricity, features.rectDensity, features.scaledPerimeter,
+				((double)features.shapeColor.val[2]) / 255,
+				((double)features.shapeColor.val[1]) / 255,
+				((double)features.shapeColor.val[0]) / 255);
+	}
+	fclose(file);
+
 
 	imshow("Thresholded", img_th);
 	imshow("Contours", drawing);
