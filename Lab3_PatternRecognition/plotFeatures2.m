@@ -53,21 +53,39 @@ for shapeNumber = 0:9
 end
 
 W = 1./(max(usedFeatures) - min(usedFeatures));
+clusters = [usedFeatures ones([length(usedFeatures) 1])];
 
-dist = zeros([nchoosek(length(all), 2) 3]);
-k = 0;
-for i = 1:length(all)
-	for j = (i+1):length(all)
-		k = k + 1;
-		d = norm((usedFeatures(i, :) - usedFeatures(j, :)) .* W);
-		dist(k, :) = [i j d];
+while true
+	%find minimum distance between any two points, any two clusters, or any
+	%cluster and point
+	dist = zeros([nchoosek(length(clusters), 2) 3]);
+	k = 0;
+	for i = 1:length(clusters)
+		for j = (i+1):length(clusters)
+			k = k + 1;
+			d = norm((clusters(i, 1:3) - clusters(j, 1:3)) .* W);
+			dist(k, :) = [i j d];
+		end
+	end
+	[~, k] = min(dist(:, 3));
+	k;
+	i = dist(k, 1);
+	j = dist(k, 2);
+	ithCluster = clusters(i, :);
+    jthCluster = clusters(j, :);
+	totalMass = ithCluster(4) + jthCluster(4);
+	centerOfMass = (ithCluster(1:3).*ithCluster(4) + jthCluster(1:3).*jthCluster(4)) / totalMass;
+	newCluster = [centerOfMass totalMass];
+	clusters(j, :) = [newCluster];
+	clusters(i, :) = [];
+	xc = [ithCluster; jthCluster];
+	plot3(xc(:, 1), xc(:, 2), xc(:, 3), 'k');	
+
+	%repeat until only 5 clusters remain.
+	if length(clusters) <= 6
+		break;
 	end
 end
-dist = sortrows(dist, 3);
-
-for k = 1:150
-	i = usedFeatures(dist(k, 1), :);
-	j = usedFeatures(dist(k, 2), :);
-	xc = [i; j];
-	plot3(xc(:, 1), xc(:, 2), xc(:, 3), 'k');
+for i = 1:length(clusters)
+	plot3(clusters(:, 1), clusters(:, 2), clusters(:, 3), 'ok');
 end
