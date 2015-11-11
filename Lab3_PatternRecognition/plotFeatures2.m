@@ -24,27 +24,23 @@ f3 = 'normalized perimeter';
 f4 = 'convex hull density'; %*
 f5 = 'density';
 
-if choice == 0
-	xlabel(f3);
-	ylabel(f5);
-else
-	xlabel([f2 ' + ' f5]);
-	ylabel(f3);
-end
+xlabel(f2);
+ylabel(f4);
+zlabel(f5);
 
 hold on;
-sums   = zeros([10 2]);
+sums   = zeros([10 3]);
 counts = zeros([10 1]);
 
-usedFeatures = zeros(length(all), 2);
+usedFeatures = zeros(length(all), 3);
 for shapeNumber = 0:9
 	xc = [];
 	for i = 1:length(all);
 		if shapeNumber == all(i, 6)
 			if choice == 0
-				usedFeatures(i, :) = [all(i, 3), all(i, 5)];
+				usedFeatures(i, :) = [all(i, 2), all(i, 3), all(i, 5)];
 			else
-				usedFeatures(i, :) = [all(i, 2) + all(i, 5), all(i, 3)];
+				usedFeatures(i, :) = [all(i, 2), all(i, 4), all(i, 5)];
 			end
 			xc = [xc; usedFeatures(i, :)];
 			sums(shapeNumber + 1, :) = sums(shapeNumber + 1, :) + usedFeatures(i, :);
@@ -52,54 +48,26 @@ for shapeNumber = 0:9
 		end
 	end
 	if ~isempty(xc)
-		plot(xc(:, 1), xc(:, 2), '*', 'Color', colorArray(shapeNumber + 1, :));
+		plot3(xc(:, 1), xc(:, 2), xc(:, 3), '*', 'Color', colorArray(shapeNumber + 1, :));
 	end
 end
-
-if counts(1) >= 1, u1 = sums(1, :) / counts(1); else u1 = [1 1] * 1000; end
-if counts(2) >= 1, u2 = sums(2, :) / counts(2); else u2 = [1 1] * 1000; end
-if counts(3) >= 1, u3 = sums(3, :) / counts(3); else u3 = [1 1] * 1000; end
-if counts(4) >= 1, u4 = sums(4, :) / counts(4); else u4 = [1 1] * 1000; end
-if counts(5) >= 1, u5 = sums(5, :) / counts(5); else u5 = [1 1] * 1000; end
-if counts(6) >= 1, u6 = sums(6, :) / counts(6); else u6 = [1 1] * 1000; end
-if counts(7) >= 1, u7 = sums(7, :) / counts(7); else u7 = [1 1] * 1000; end
-if counts(8) >= 1, u8 = sums(8, :) / counts(8); else u8 = [1 1] * 1000; end
-if counts(9) >= 1, u9 = sums(9, :) / counts(9); else u9 = [1 1] * 1000; end
-if counts(10) >= 1, u10 = sums(10, :) / counts(10); else u10 = [1 1] * 1000; end
-u = [u1; u2; u3; u4; u5; u6; u7; u8; u9; u10];
-
-xc = [];
 
 W = 1./(max(usedFeatures) - min(usedFeatures));
 
-if choice == 0
-	ylim([.1 1.1])
-end
-ax = axis;
-divisions = 500;
-tickX = (ax(2) - ax(1)) / divisions;
-tickY = (ax(4) - ax(3)) / divisions;
-d = zeros([1 10]);
-s = zeros([divisions divisions]);
-for x_2 = 1:divisions
-	for x_1 = 1:divisions
-		x = [ax(1)+tickX*x_1 ax(3)+tickY*x_2];
-		for i = 1:10
-			d(i) = norm((x - u(i, :)) .* W);
-		end
-		[~, region] = min(d);
-		s(x_1, x_2) = region;
-		if (x_1 > 1 && region ~= s(x_1 - 1, x_2)) || ...
-			(x_2 > 1 && region ~= s(x_1, x_2 - 1))
-			xc = [xc; x];
-		end
+dist = zeros([nchoosek(length(all), 2) 3]);
+k = 0;
+for i = 1:length(all)
+	for j = (i+1):length(all)
+		k = k + 1;
+		d = norm((usedFeatures(i, :) - usedFeatures(j, :)) .* W);
+		dist(k, :) = [i j d];
 	end
 end
+dist = sortrows(dist, 3);
 
-plot(xc(:, 1), xc(:, 2), '.k');
-
-if choice == 0
-	legend('rectangle', 'triangle', 'circle', 'millstone', 'oval');
-else
-	legend('millstone', 'rounded cross', 'oval', 'E', 'F');
+for k = 1:150
+	i = usedFeatures(dist(k, 1), :);
+	j = usedFeatures(dist(k, 2), :);
+	xc = [i; j];
+	plot3(xc(:, 1), xc(:, 2), xc(:, 3), 'k');
 end
