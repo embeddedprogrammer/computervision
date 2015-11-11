@@ -70,15 +70,20 @@ features_t getContourFeatures(vector<vector<Point> > contours, vector<Vec4i> hie
 	double m20 = mm.m20;
 	double m02 = mm.m02;
 	double outsideContourMass = m00;
-	if(hierarchy[i][2] != -1) //Subtract hole from mass.
-	{
-		mm = moments((Mat)contours[hierarchy[i][2]]);
-		m00 -= mm.m00;
-		m10 -= mm.m10;
-		m01 -= mm.m01;
-		m20 -= mm.m20;
-		m02 -= mm.m02;
-	}
+
+	int densityA = 0;
+
+	//Subtract holes from mass.
+	for(int j = 0; j < contours.size(); j++)
+		if(hierarchy[j][3] == i)
+		{
+			mm = moments((Mat)contours[j]);
+			m00 -= mm.m00;
+			m10 -= mm.m10;
+			m01 -= mm.m01;
+			m20 -= mm.m20;
+			m02 -= mm.m02;
+		}
 
 	double mass = m00;
 	double centerX = (m10 / m00);
@@ -87,7 +92,7 @@ features_t getContourFeatures(vector<vector<Point> > contours, vector<Vec4i> hie
 	double sigma_y = sqrt(m02 / m00 - centerY * centerY);
 	double perimeter = arcLength((Mat)contours[i], true);
 	features_t features;
-	features.scaledPerimeter = perimeter / sqrt(mass);
+	features.scaledPerimeter = perimeter / sqrt(outsideContourMass);
 	features.center = Point(centerX, centerY);
 	features.shapeColor = ans.at<Vec3b>(features.center.y, features.center.x);
 	features.shapeNumber = getColorNumber(features.shapeColor);
@@ -98,7 +103,7 @@ features_t getContourFeatures(vector<vector<Point> > contours, vector<Vec4i> hie
 	vector<Point> hull;
 	convexHull(Mat(contours[i]), hull);
 	features.hull = hull;
-	features.hullDensity = mass / moments((Mat)hull).m00;
+	features.hullDensity = outsideContourMass / moments((Mat)hull).m00;
 
 	// Find the rectangle object
     RotatedRect rect = minAreaRect(contours[i]);
@@ -118,7 +123,7 @@ features_t getContourFeatures(vector<vector<Point> > contours, vector<Vec4i> hie
 #define ORGANIZATION_SPACE_WIDTH (HORIZONTAL_OUTER_SPACING*2 + HORIZONTAL_INNER_SPACING*(MAX_OBJECTS_PER_CLASS - 1))
 #define ORGANIZATION_SPACE_HEIGHT (VERTICAL_OUTER_SPACING*2 + VERTICAL_INNER_SPACING*(MAX_OBJECT_CLASSES - 1))
 
-int processImage(string imageFileName, string answerFileName, string matlabLabel, bool invert, FILE *file, int* classCount, Mat drawing)
+void processImage(string imageFileName, string answerFileName, string matlabLabel, bool invert, FILE *file, int* classCount, Mat drawing)
 {
 	// Read image
 	Mat img, ans, img_th, img_cnc;
@@ -142,6 +147,9 @@ int processImage(string imageFileName, string answerFileName, string matlabLabel
 	int objects = 0;
 	features_t FeaturesArray[20];
 
+//	for(int i = 0; i < contours.size(); i++)
+//		printf("hierarchy[%d][2] = %d\n", i, hierarchy[i][2]);
+
 	for(int i = 0; i < contours.size(); i++)
 	{
 		if(hierarchy[i][3] == -1) // Only use objects, not holes
@@ -157,6 +165,8 @@ int processImage(string imageFileName, string answerFileName, string matlabLabel
 			classCount[features.shapeNumber]++;
 
 			drawContours(drawing, contours, i, (Scalar)features.shapeColor, 4, 8, hierarchy, 1, Point(offsetX, offsetY));
+			//drawContours(img_th, contours, i, (Scalar)features.shapeColor, 4, 8, hierarchy, 1, Point());
+			//printf("[%d] %f %f %f %f %f %d\n", i, features.eccentricity, features.rectDensity, features.scaledPerimeter, features.hullDensity, features.density, features.shapeNumber);
 
 			FeaturesArray[objects] = features;
 
@@ -187,7 +197,7 @@ int processImage(string imageFileName, string answerFileName, string matlabLabel
 	}
 	fprintf(file, "];\n\n");
 
-	//imshow("Thresholded", img_th);
+	imshow("Thresholded", img_th);
 }
 
 int main( int argc, char** argv )
