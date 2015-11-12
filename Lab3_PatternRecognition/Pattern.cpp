@@ -54,6 +54,7 @@ typedef struct
 	double rectDensity;
 	double hullDensity;
 	double density;
+	double shift;
 	vector<Point> hull;
 	Point center;
 	Vec3b shapeColor;
@@ -110,6 +111,13 @@ features_t getContourFeatures(vector<vector<Point> > contours, vector<Vec4i> hie
 	features.rectDensity = moments((Mat)hull).m00 / rect.size.area();
 	double eccentricity = (rect.size.width > rect.size.height) ? (rect.size.width / rect.size.height) : (rect.size.height / rect.size.width);
 	features.eccentricity = eccentricity;
+
+	mm = moments((Mat)hull);
+	Point2f hullCenter = Point2f(mm.m10 / mm.m00, mm.m01 / mm.m00);
+	Point2f rectCenter = rect.center;
+	float dx = hullCenter.x - rectCenter.x;
+	float dy = hullCenter.y - rectCenter.y;
+	features.shift = sqrt(dx*dx + dy*dy) / sqrt(rect.size.width * rect.size.height);
 
 	return features;
 }
@@ -178,7 +186,7 @@ void processImage(string imageFileName, string answerFileName, string matlabLabe
 //			hullArray[0] = features.hull;
 //	        drawContours(drawing, hullArray, 0, color, 1);
 //
-//	        // Draw rectangular bouding box
+//	        // Draw rectangular bounding box
 //	        RotatedRect rect = minAreaRect(contours[i]);
 //	        Point2f pts[4];
 //	        rect.points(pts);
@@ -193,11 +201,11 @@ void processImage(string imageFileName, string answerFileName, string matlabLabe
 	for(int i = 0; i < objects; i++)
 	{
 		features_t features = FeaturesArray[i];
-		fprintf(file, "%f %f %f %f %f %d; ...\n", features.eccentricity, features.rectDensity, features.scaledPerimeter, features.hullDensity, features.density, features.shapeNumber);
+		fprintf(file, "%f %f %f %f %f %f %d; ...\n", features.eccentricity, features.rectDensity, features.scaledPerimeter, features.hullDensity, features.density, features.shift, features.shapeNumber);
 	}
 	fprintf(file, "];\n\n");
 
-	imshow("Thresholded", img_th);
+	//imshow("Thresholded", img_th);
 }
 
 int main( int argc, char** argv )

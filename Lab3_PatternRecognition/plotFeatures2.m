@@ -16,29 +16,33 @@ if choice == 0
 	%all = [shapes; testshapes; train1; train2; match1; match2];
 	all = [shapes; testshapes];
 else
-	all = [train1; train2; match1; match2];
+	all = [train1; train2];%; match1; match2];
 end
 f1 = 'eccentricity';
 f2 = 'rectangular bounding box density'; %***
 f3 = 'normalized perimeter';
 f4 = 'convex hull density'; %*
 f5 = 'density';
+f6 = 'shift';
 
-xlabel(f2);
+%xlabel(f2);
+
+xlabel([f2 ' ' f6]);
 ylabel(f4);
 zlabel(f5);
 
 hold on;
-sums   = zeros([10 3]);
-counts = zeros([10 1]);
 
-usedFeatures = zeros(length(all), 3);
+n = 3;
+usedFeatures = zeros(length(all), n);
+sums   = zeros([10 n]);
+counts = zeros([10 1]);
 for shapeNumber = 0:9
 	xc = [];
 	for i = 1:length(all);
-		if shapeNumber == all(i, 6)
+		if shapeNumber == all(i, 7)
 			if choice == 0
-				usedFeatures(i, :) = [all(i, 2), all(i, 3), all(i, 5)];
+				%usedFeatures(i, :) = [all(i, 2), all(i, 5), all(i, 2)];
 			else
 				usedFeatures(i, :) = [all(i, 2), all(i, 4), all(i, 5)];
 			end
@@ -47,23 +51,30 @@ for shapeNumber = 0:9
 			counts(shapeNumber + 1) = counts(shapeNumber + 1) + 1;
 		end
 	end
-	if ~isempty(xc)
-		plot3(xc(:, 1), xc(:, 2), xc(:, 3), '*', 'Color', colorArray(shapeNumber + 1, :));
+	if ~isempty(xc)		
+		if n == 1
+			plot(xc(:, 1), shapeNumber, '*', 'Color', colorArray(shapeNumber + 1, :));
+		elseif n == 2
+			plot(xc(:, 1), xc(:, 2), '*', 'Color', colorArray(shapeNumber + 1, :));
+		else
+			plot3(xc(:, 1), xc(:, 2), xc(:, 3), '*', 'Color', colorArray(shapeNumber + 1, :));
+		end
 	end
 end
 
 W = 1./(max(usedFeatures) - min(usedFeatures));
-clusters = [usedFeatures ones([length(usedFeatures) 1])];
+clusters = [usedFeatures ones([size(usedFeatures, 1) 1])];
+size(clusters)
 
 while true
 	%find minimum distance between any two points, any two clusters, or any
 	%cluster and point
-	dist = zeros([nchoosek(length(clusters), 2) 3]);
+	dist = zeros([nchoosek(size(clusters, 1), 2) 3]);
 	k = 0;
-	for i = 1:length(clusters)
-		for j = (i+1):length(clusters)
+	for i = 1:size(clusters, 1)
+		for j = (i+1):size(clusters, 1)
 			k = k + 1;
-			d = norm((clusters(i, 1:3) - clusters(j, 1:3)) .* W);
+			d = norm((clusters(i, 1:n) - clusters(j, 1:n)) .* W);
 			dist(k, :) = [i j d];
 		end
 	end
@@ -73,19 +84,23 @@ while true
 	j = dist(k, 2);
 	ithCluster = clusters(i, :);
     jthCluster = clusters(j, :);
-	totalMass = ithCluster(4) + jthCluster(4);
-	centerOfMass = (ithCluster(1:3).*ithCluster(4) + jthCluster(1:3).*jthCluster(4)) / totalMass;
+	totalMass = ithCluster(n + 1) + jthCluster(n + 1);
+	centerOfMass = (ithCluster(1:n).*ithCluster(n + 1) + jthCluster(1:n).*jthCluster(n + 1)) / totalMass;
 	newCluster = [centerOfMass totalMass];
 	clusters(j, :) = [newCluster];
 	clusters(i, :) = [];
 	xc = [ithCluster; jthCluster];
-	plot3(xc(:, 1), xc(:, 2), xc(:, 3), 'k');	
+	if n == 2
+		plot(xc(:, 1), xc(:, 2), 'k');
+	else
+		plot3(xc(:, 1), xc(:, 2), xc(:, 3), 'k');
+	end
 
 	%repeat until only 5 clusters remain.
-	if length(clusters) <= 6
+	if size(clusters, 1) <= 6
 		break;
 	end
 end
-for i = 1:length(clusters)
+for i = 1:size(clusters, 1)
 	plot3(clusters(:, 1), clusters(:, 2), clusters(:, 3), 'ok');
 end
