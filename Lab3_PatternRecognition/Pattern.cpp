@@ -122,8 +122,8 @@ features_t getContourFeatures(vector<vector<Point> > contours, vector<Vec4i> hie
 	return features;
 }
 
-#define VERTICAL_INNER_SPACING 150
-#define HORIZONTAL_INNER_SPACING 150
+#define VERTICAL_INNER_SPACING 200
+#define HORIZONTAL_INNER_SPACING 200
 #define VERTICAL_OUTER_SPACING 200
 #define HORIZONTAL_OUTER_SPACING 200
 #define MAX_OBJECTS_PER_CLASS 15
@@ -172,7 +172,7 @@ void processImage(string imageFileName, string answerFileName, string matlabLabe
 
 			classCount[features.shapeNumber]++;
 
-			drawContours(drawing, contours, i, (Scalar)features.shapeColor, 4, 8, hierarchy, 1, Point(offsetX, offsetY));
+			drawContours(drawing, contours, i, Scalar(255, 255, 255), 1, 8, hierarchy, 1, Point(offsetX, offsetY));
 			//drawContours(img_th, contours, i, (Scalar)features.shapeColor, 4, 8, hierarchy, 1, Point());
 			//printf("[%d] %f %f %f %f %f %d\n", i, features.eccentricity, features.rectDensity, features.scaledPerimeter, features.hullDensity, features.density, features.shapeNumber);
 
@@ -181,17 +181,23 @@ void processImage(string imageFileName, string answerFileName, string matlabLabe
 			//printf("Object %d Shape number %d Class count: %d\n", objects, features.shapeNumber, classCount[features.shapeNumber]);
 //			circle(drawing, features.center, 2, color);
 
-//			//Draw convex hull
-//			vector<vector<Point> > hullArray = vector<vector<Point> >(1);
-//			hullArray[0] = features.hull;
-//	        drawContours(drawing, hullArray, 0, color, 1);
-//
-//	        // Draw rectangular bounding box
-//	        RotatedRect rect = minAreaRect(contours[i]);
-//	        Point2f pts[4];
-//	        rect.points(pts);
-//			for( int j = 0; j < 4; j++)
-//				line(drawing, pts[j], pts[(j+1)%4], color, 1, 8);
+			//Draw convex hull
+			vector<vector<Point> > hullArray = vector<vector<Point> >(1);
+			hullArray[0] = features.hull;
+	        drawContours(drawing, hullArray, 0, Scalar(255, 255, 255), 1, 8, noArray(), 1, Point(offsetX, offsetY));
+
+	        // Draw rectangular bounding box
+	        RotatedRect rect = minAreaRect(contours[i]);
+	        Point2f pts[4];
+	        rect.points(pts);
+			for( int j = 0; j < 4; j++)
+			{
+				pts[j].x +=offsetX;
+				pts[j].y +=offsetY;
+			}
+
+			for( int j = 0; j < 4; j++)
+				line(drawing, pts[j], pts[(j+1)%4], Scalar(255, 255, 255), 1, 8);
 			objects++;
 		}
 	}
