@@ -14,22 +14,28 @@ colorArray = [colorArray(:, 3) colorArray(:, 2) colorArray(:, 1)] / 255;
 choice = 1;
 if choice == 0
 	%all = [shapes; testshapes; train1; train2; match1; match2];
-	all = [shapes; testshapes];
+	all = [shapes]; %; testshapes];
 else
-	all = [train1; train2];%; match1; match2];
+	all = [train1];%; train2; match1; match2];
 end
 f1 = 'eccentricity';
-f2 = 'rectangular bounding box density'; %***
+f2 = 'rectangular bounding box density';
 f3 = 'normalized perimeter';
-f4 = 'convex hull density'; %*
+f4 = 'convex hull density';
 f5 = 'density';
 f6 = 'shift';
 
-%xlabel(f2);
+if choice == 0
+	xlabel(f3);
+	ylabel(f5);
+else
+	xlabel(f2);
+	ylabel(f4);
+	zlabel(f5);
+end
 
-xlabel([f2 ' ' f6]);
-ylabel(f4);
-zlabel(f5);
+
+
 
 hold on;
 
@@ -42,7 +48,7 @@ for shapeNumber = 0:9
 	for i = 1:length(all);
 		if shapeNumber == all(i, 7)
 			if choice == 0
-				%usedFeatures(i, :) = [all(i, 2), all(i, 5), all(i, 2)];
+				usedFeatures(i, :) = [all(i, 3), all(i, 5)];
 			else
 				usedFeatures(i, :) = [all(i, 2), all(i, 4), all(i, 5)];
 			end
@@ -64,7 +70,7 @@ end
 
 W = 1./(max(usedFeatures) - min(usedFeatures));
 clusters = [usedFeatures ones([size(usedFeatures, 1) 1])];
-size(clusters)
+size(clusters);
 
 while true
 	%find minimum distance between any two points, any two clusters, or any
@@ -87,7 +93,7 @@ while true
 	totalMass = ithCluster(n + 1) + jthCluster(n + 1);
 	centerOfMass = (ithCluster(1:n).*ithCluster(n + 1) + jthCluster(1:n).*jthCluster(n + 1)) / totalMass;
 	newCluster = [centerOfMass totalMass];
-	clusters(j, :) = [newCluster];
+	clusters(j, :) = newCluster;
 	clusters(i, :) = [];
 	xc = [ithCluster; jthCluster];
 	if n == 2
@@ -97,10 +103,16 @@ while true
 	end
 
 	%repeat until only 5 clusters remain.
-	if size(clusters, 1) <= 6
+	if size(clusters, 1) <= 5
 		break;
 	end
 end
 for i = 1:size(clusters, 1)
 	plot3(clusters(:, 1), clusters(:, 2), clusters(:, 3), 'ok');
+end
+
+if choice == 0
+	legend('rectangle', 'triangle', 'circle', 'millstone', 'oval')
+else
+	legend('millstone', 'rounded cross', 'oval', 'E', 'F')
 end
