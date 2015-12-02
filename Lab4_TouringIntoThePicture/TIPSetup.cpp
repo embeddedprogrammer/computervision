@@ -52,10 +52,10 @@ void saveSettingsFile(string filename)
 	fclose(file);
 }
 
-Point calcLineIntersection(Point center, Point farAwayCorner, bool vertical)
+Point calcLineIntersection(Point farAwayCorner, bool vertical)
 {
-	float dy1 = farAwayCorner.y - center.y;
-	float dx1 = farAwayCorner.x - center.x;
+	float dy1 = farAwayCorner.y - points[0].y;
+	float dx1 = farAwayCorner.x - points[0].x;
 	if(vertical)
 	{
 		float dx2 = (dx1 < 0 ? 0 : originalImage.cols) - farAwayCorner.x;
@@ -70,13 +70,13 @@ Point calcLineIntersection(Point center, Point farAwayCorner, bool vertical)
 	}
 }
 
-Point calcRectIntersection(Point center, Point farAwayCorner)
+Point calcRectIntersection(Point farAwayCorner)
 {
-	Point p1 = calcLineIntersection(center, farAwayCorner, true);
+	Point p1 = calcLineIntersection(farAwayCorner, true);
 	if(p1.x >= 0 && p1.y >= 0 && p1.x <= originalImage.cols && p1.y <= originalImage.rows)
 		return p1;
 	else
-		return calcLineIntersection(center, farAwayCorner, false);
+		return calcLineIntersection(farAwayCorner, false);
 }
 
 void drawPoints()
@@ -86,14 +86,77 @@ void drawPoints()
 	rectangle(drawing, points[1], points[3], Scalar(255, 255, 255), 1);
 	for(int i = 1; i <= 4; i++)
 	{
-		Point pt2 = calcRectIntersection(points[0], points[i]);
+		Point pt2 = calcRectIntersection(points[i]);
 		line(drawing, points[i], pt2, Scalar(255, 255, 255), 1);
 	}
-	for(int x = 0; x < originalImage.cols; x+=10)
+	imshow("Display Image", drawing);
+}
+
+Point2f mapBackwards(Point3f voxel, float focalLength)
+{
+	float x = voxel.x * focalLength / voxel.z;
+	float y = voxel.y * focalLength / voxel.z;
+	return Point2f(x + points[0].x, y + points[0].y);
+}
+
+Point3f mapForwardsFromDepth(Point2f pixel, float focalLength, float depth)
+{
+	float x = (pixel.x - points[0].x) * depth / focalLength;
+	float y = (pixel.y - points[0].y) * depth / focalLength;
+	printf("Point: %f %f %f\n", x, y, depth);
+	return Point3f(x, y, depth);
+}
+
+Point3f mapForwards(Point2f pixel, float focalLength, float xw)
+{
+	float z = focalLength * xw / (pixel.x - points[0].x);
+	return mapForwardsFromDepth(pixel, focalLength, z);
+}
+
+void drawPoints2()
+{
+	Mat drawing = originalImage.clone();
+	circle(drawing, points[0], 2, Scalar(255, 255, 255), CV_FILLED);
+	rectangle(drawing, points[1], points[3], Scalar(255, 255, 255), 1);
+	for(int i = 1; i <= 4; i++)
 	{
-		for(int y = 0; y < originalImage.rows; y+=10)
+		Point pt2 = calcRectIntersection(points[i]);
+		line(drawing, points[i], pt2, Scalar(255, 255, 255), 1);
+	}
+
+	//Init 3d world
+	float depth = 10;
+	float focalLength = 10; //pixels
+	Point3f vx1 = mapForwardsFromDepth(points[4], focalLength, depth);
+	Point3f vx2 = mapForwardsFromDepth(points[3], focalLength, depth);
+	float wallDistance = vx1.x;
+	Point p1 = calcLineIntersection(points[4], true);
+	Point p2 = calcLineIntersection(points[3], true);
+	circle(drawing, points[4], 3, Scalar(255, 255, 255), CV_FILLED);
+	circle(drawing, points[3], 3, Scalar(255, 255, 255), CV_FILLED);
+	circle(drawing, p1, 3, Scalar(255, 255, 255), CV_FILLED);
+	circle(drawing, p2, 3, Scalar(255, 255, 255), CV_FILLED);
+	Point3f vx3 = mapForwards(Point2f(p1.x, p1.y), focalLength, wallDistance);
+	Point3f vx4 = mapForwards(Point2f(p2.x, p2.y), focalLength, wallDistance);
+
+	float x = wallDistance;
+	float minY = vx3.y;
+	float maxY = vx2.y;
+	float minZ = vx3.z;
+	float maxZ = vx2.z;
+	float deltaY = (maxY - minY) / 10.01;
+	float deltaZ = (maxZ - minZ) / 10.01;
+
+	printf("%f to %f, +=%f\n", minY, maxY, deltaY);
+	printf("%f to %f, +=%f\n", minZ, maxZ, deltaZ);
+
+	for(float z = minZ; z <= maxZ; z += deltaZ)
+	{
+		for(float y = minY; y <= maxY; y += deltaY)
 		{
-			circle(drawing, Point(x, y), 2, Scalar(255, 255, 255), CV_FILLED);
+			Point2f p = mapBackwards(Point3f(x, y, z), focalLength);
+			//printf("Map %f %f %f", x, y, z);
+			circle(drawing, Point(p.x, p.y), 2, Scalar(255, 0, 0), CV_FILLED);
 		}
 	}
 	imshow("Display Image", drawing);
@@ -192,7 +255,7 @@ int main(int argc, char** argv )
 			break;
 		else
 		{
-
+			drawPoints2();
 		}
 	}
 	if(argc >= 3)
