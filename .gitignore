@@ -19,3 +19,6 @@ ImageLibrary.h
 *.bmp
 *.doc
 *.asv
+OpenGL/
+*.JPG
+*.xls
