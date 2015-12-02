@@ -126,7 +126,7 @@ void drawPoints2()
 
 	//Init 3d world
 	float depth = 10;
-	float focalLength = 10; //pixels
+	float focalLength = 700; //pixels
 	Point3f vx1 = mapForwardsFromDepth(points[4], focalLength, depth);
 	Point3f vx2 = mapForwardsFromDepth(points[3], focalLength, depth);
 	float wallDistance = vx1.x;
@@ -144,22 +144,40 @@ void drawPoints2()
 	float maxY = vx2.y;
 	float minZ = vx3.z;
 	float maxZ = vx2.z;
-	float deltaY = (maxY - minY) / 10.01;
-	float deltaZ = (maxZ - minZ) / 10.01;
+
+	int wallHeight = p2.y - p1.y;
+	int wallLength = (maxZ - minZ) * (p2.y - p1.y) / (maxY - minY);
+
+	printf("Wall size: %d %d\n", wallHeight, wallLength);
+
+	float deltaY = (maxY - minY) / wallHeight;
+	float deltaZ = (maxZ - minZ) / wallLength;
 
 	printf("%f to %f, +=%f\n", minY, maxY, deltaY);
 	printf("%f to %f, +=%f\n", minZ, maxZ, deltaZ);
 
-	for(float z = minZ; z <= maxZ; z += deltaZ)
+	Mat wallDrawing = Mat::zeros(wallHeight, wallLength, CV_8UC3);
+
+	for(int wallX = 0; wallX < wallLength; wallX++)
 	{
-		for(float y = minY; y <= maxY; y += deltaY)
+		for(int wallY = 0; wallY < wallHeight; wallY++)
 		{
+			float y = minY + deltaY * wallY;
+			float z = minZ + deltaZ * wallX;
 			Point2f p = mapBackwards(Point3f(x, y, z), focalLength);
-			//printf("Map %f %f %f", x, y, z);
-			circle(drawing, Point(p.x, p.y), 2, Scalar(255, 0, 0), CV_FILLED);
+			if(p.x >= 0 && p.y >= 0 && p.x < originalImage.cols && p.y < originalImage.rows)
+			{
+//				drawing.at<Vec3b>(p.y, p.x)[0] = 255;
+//				drawing.at<Vec3b>(p.y, p.x)[1] = 0;
+//				drawing.at<Vec3b>(p.y, p.x)[2] = 0; //TODO: Interpolate.
+				wallDrawing.at<Vec3b>(wallY, wallX)[0] = saturate_cast<uchar>(originalImage.at<Vec3b>(p.y, p.x)[0]);
+				wallDrawing.at<Vec3b>(wallY, wallX)[1] = saturate_cast<uchar>(originalImage.at<Vec3b>(p.y, p.x)[1]);
+				wallDrawing.at<Vec3b>(wallY, wallX)[2] = saturate_cast<uchar>(originalImage.at<Vec3b>(p.y, p.x)[2]);
+			}
 		}
 	}
 	imshow("Display Image", drawing);
+	imshow("Wall", wallDrawing);
 }
 
 //void addSeed(int x, int y, bool foreground, cv::Vec<unsigned char, 3> color)
