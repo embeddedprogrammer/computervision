@@ -217,7 +217,7 @@ void addSeed(int x, int y, bool foreground, cv::Vec<unsigned char, 3> color)
 #define ESC 27
 
 int mouseDown;
-Mat image2;
+Mat originalImage;
 Mat originalImage;
 Mat hsvImage;
 GraphType* graph;
@@ -244,8 +244,8 @@ void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 			addSeed(x, y, false, hsvImage.at<Vec3b>(y,x));
 
 		Scalar color = (mouseDown == 1) ? Scalar(255, 0, 0) : Scalar(0, 0, 255);
-		circle(image2, Point(x, y), 3 * scale, color, CV_FILLED);
-		imshow2("Display Image", image2);
+		circle(originalImage, Point(x, y), 3 * scale, color, CV_FILLED);
+		imshow2("Display Image", originalImage);
 	}
 }
 
@@ -260,16 +260,16 @@ int main(int argc, char** argv )
 
 	originalImage = imread(argv[1], 1);
 	cvtColor(originalImage, hsvImage, COLOR_BGR2HSV);
-	image2 = originalImage.clone();
+	originalImage = originalImage.clone();
 
-	if ( !image2.data )
+	if ( !originalImage.data )
 	{
 		printf("No image data \n");
 		return -1;
 	}
 	namedWindow("Display Image", WINDOW_AUTOSIZE );
 	createTrackbar("Lambda", "Display Image", &lambdaSlider, 200);
-	imshow2("Display Image", image2);
+	imshow2("Display Image", originalImage);
 	setMouseCallback("Display Image", CallBackFunc, NULL);
 
 	std::string lineInput = "";
