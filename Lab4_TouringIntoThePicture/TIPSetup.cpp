@@ -1,6 +1,9 @@
 #include <cv.h>
 #include <highgui.h>
+#include <iostream>
+#include <fstream>
 
+using namespace std;
 using namespace cv;
 
 Mat originalImage;
@@ -17,6 +20,36 @@ void initPoints()
 	points[2] = Point(originalImage.rows * 1 / 3, originalImage.rows * 2 / 3);
 	points[3] = Point(originalImage.rows * 2 / 3, originalImage.rows * 2 / 3);
 	points[4] = Point(originalImage.rows * 2 / 3, originalImage.rows * 1 / 3);
+}
+
+void readSettingsFile(string filename)
+{
+    ifstream settingsFile;
+    settingsFile.open(filename.c_str());
+
+    int x, y;
+    for(int i = 0; i < 5; i++)
+    {
+    	settingsFile >> x >> y;
+    	if(x < 0 || y < 0 || x >= originalImage.cols || y >= originalImage.rows)
+    	{
+    		printf("Invalid point in point file.\n");
+    		initPoints();
+    		return;
+    	}
+    	points[i] = Point(x, y);
+    }
+    settingsFile.close();
+}
+
+void saveSettingsFile(string filename)
+{
+	FILE* file = fopen(filename.c_str(), "w");
+    for(int i = 0; i < 5; i++)
+    {
+    	fprintf(file, "%d %d\n", points[i].x, points[i].y);
+    }
+	fclose(file);
 }
 
 Point calcLineIntersection(Point center, Point farAwayCorner, bool vertical)
@@ -55,6 +88,13 @@ void drawPoints()
 	{
 		Point pt2 = calcRectIntersection(points[0], points[i]);
 		line(drawing, points[i], pt2, Scalar(255, 255, 255), 1);
+	}
+	for(int x = 0; x < originalImage.cols; x+=10)
+	{
+		for(int y = 0; y < originalImage.rows; y+=10)
+		{
+			circle(drawing, Point(x, y), 2, Scalar(255, 255, 255), CV_FILLED);
+		}
 	}
 	imshow("Display Image", drawing);
 }
@@ -122,9 +162,9 @@ void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 
 int main(int argc, char** argv )
 {
-	if ( argc != 2 )
+	if ( argc < 2 )
 	{
-		printf("usage: DisplayImage.out <Image_Path>\n");
+		printf("usage: DisplayImage.out <Image_Path> <Settings_Path>\n");
 		return -1;
 	}
 	printf("Welcome to TIP Setup. Click to move points.\n");
@@ -137,7 +177,10 @@ int main(int argc, char** argv )
 	}
 	namedWindow("Display Image", WINDOW_AUTOSIZE );
 	setMouseCallback("Display Image", CallBackFunc, NULL);
-	initPoints();
+	if(argc < 3)
+		initPoints();
+	else
+		readSettingsFile(argv[2]);
 	drawPoints();
 
 	std::string lineInput = "";
@@ -152,7 +195,7 @@ int main(int argc, char** argv )
 
 		}
 	}
+	if(argc >= 3)
+		saveSettingsFile(argv[2]);
 	return 0;
 }
-
-
