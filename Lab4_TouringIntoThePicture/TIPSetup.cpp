@@ -103,17 +103,18 @@ Point3f mapForwardsFromDepth(Point2f pixel, float focalLength, float depth)
 {
 	float x = (pixel.x - points[0].x) * depth / focalLength;
 	float y = (pixel.y - points[0].y) * depth / focalLength;
-	printf("Point: %f %f %f\n", x, y, depth);
 	return Point3f(x, y, depth);
 }
 
-Point3f mapForwards(Point2f pixel, float focalLength, float xw)
+Point3f mapForwards(Point2f pixel, float focalLength, float xw_or_yw, bool vertical)
 {
-	float z = focalLength * xw / (pixel.x - points[0].x);
+	float z;
+	if(vertical)
+		z = focalLength * xw_or_yw / (pixel.x - points[0].x);
+	else
+		z = focalLength * xw_or_yw / (pixel.y - points[0].y);
 	return mapForwardsFromDepth(pixel, focalLength, z);
 }
-
-int maxPrint = 1;
 
 float mixValues(float c1, float c2, float c3, float c4, float f1, float f2, float f3, float f4)
 {
@@ -138,69 +139,115 @@ Vec3b GetPixelInterpolated(Point2f p)
 	Vec3b color21 = originalImage.at<Vec3b>(yTruncated + 1, xTruncated);
 	Vec3b color22 = originalImage.at<Vec3b>(yTruncated + 1, xTruncated + 1);
 	Vec3b mix = mixPixels(color11, color12, color21, color22, (1 - xFrac)*(1 - yFrac), xFrac*(1 - yFrac), (1 - xFrac)*yFrac, xFrac*yFrac);
-	if(maxPrint >= 1)
-	{
-		printf("Frac %f %f\n", xFrac, yFrac);
-		printf("Red %d %d\n     %d %d %d\n", color11[2], color12[2], color21[2], color22[2], mix[2]);
-		maxPrint--;
-	}
 	return mix;
-	//return originalImage.at<Vec3b>(p.y, p.x);
 }
 
-Mat mapWallBackwards(Mat drawing)
+typedef struct
 {
-	//Init 3d world
-	float depth = 10;
-	float focalLength = 700; //pixels
-	Point3f vx1 = mapForwardsFromDepth(points[4], focalLength, depth);
-	Point3f vx2 = mapForwardsFromDepth(points[3], focalLength, depth);
-	float wallDistance = vx1.x;
-	Point p1 = calcLineIntersection(points[4], true);
-	Point p2 = calcLineIntersection(points[3], true);
-	circle(drawing, points[4], 3, Scalar(255, 255, 255), CV_FILLED);
-	circle(drawing, points[3], 3, Scalar(255, 255, 255), CV_FILLED);
-	circle(drawing, p1, 3, Scalar(255, 255, 255), CV_FILLED);
-	circle(drawing, p2, 3, Scalar(255, 255, 255), CV_FILLED);
-	Point3f vx3 = mapForwards(Point2f(p1.x, p1.y), focalLength, wallDistance);
-	Point3f vx4 = mapForwards(Point2f(p2.x, p2.y), focalLength, wallDistance);
+	Point p1;
+	Point p2;
+	Point p3;
+	Point p4;
+	Point3f vx1;
+	Point3f vx2;
+	Point3f vx3;
+	Point3f vx4;
+	Size size;
+	bool vertical;
+	float focalLength;
+	float wallDistance;
+	float minXorY;
+	float minZ;
+	float deltaXorY;
+	float deltaZ;
+} MappingInfo;
 
-	float x = wallDistance;
-	float minY = vx3.y;
-	float maxY = vx2.y;
-	float minZ = vx3.z;
-	float maxZ = vx2.z;
-
-	int wallHeight = p2.y - p1.y;
-	int wallLength = (maxZ - minZ) * (p2.y - p1.y) / (maxY - minY);
-
-	printf("Wall size: %d %d\n", wallHeight, wallLength);
-
-	float deltaY = (maxY - minY) / wallHeight;
-	float deltaZ = (maxZ - minZ) / wallLength;
-
-	printf("%f to %f, +=%f\n", minY, maxY, deltaY);
-	printf("%f to %f, +=%f\n", minZ, maxZ, deltaZ);
-
-	Mat wallDrawing = Mat::zeros(wallHeight, wallLength, CV_8UC3);
-
-	for(int wallX = 0; wallX < wallLength; wallX++)
+Point3f mapWallPixelBackwards(Point wallPoint, MappingInfo info)
+{
+	float x, y, z;
+	if(info.vertical)
 	{
-		for(int wallY = 0; wallY < wallHeight; wallY++)
+		x = info.wallDistance;
+		y = info.minXorY + info.deltaXorY * wallPoint.y;
+		z = info.minZ + info.deltaZ * wallPoint.x;
+	}
+	else
+	{
+		x = info.minXorY + info.deltaXorY * wallPoint.y;
+		y = info.wallDistance;
+		z = info.minZ + info.deltaZ * wallPoint.x;
+	}
+	return Point3f(x, y, z);
+}
+
+MappingInfo setupBackwardsMapping(Point p1, Point p2, bool vertical)
+{
+	MappingInfo info;
+
+	// Parameters to setup spidery mesh
+	float depth = 10;
+	info.focalLength = 700; //pixels
+
+	// From initial two points, calculate the other two points that form the wall.
+	Point p3 = calcLineIntersection(p1, vertical);
+	Point p4 = calcLineIntersection(p2, vertical);
+
+	// Find the corresponding real world coordinates for the corners of the wall.
+	info.vx1 = mapForwardsFromDepth(p1, info.focalLength, depth);
+	info.vx2 = mapForwardsFromDepth(p2, info.focalLength, depth);
+	info.wallDistance = vertical ? info.vx1.x : info.vx1.y;
+	info.vx3 = mapForwards(Point2f(p3.x, p3.y), info.focalLength, info.wallDistance, vertical);
+	info.vx4 = mapForwards(Point2f(p4.x, p4.y), info.focalLength, info.wallDistance, vertical);
+
+	// Find the wall's min and max real world coordinates (ie. it's real-world bounding box).
+	info.minXorY = vertical ? info.vx3.y : info.vx3.x;
+	float maxXorY = vertical ? info.vx2.y : info.vx2.x;
+	info.minZ = info.vx3.z;
+	float maxZ = info.vx2.z;
+
+	// Calculate the size of the wall in pixels.
+	int wallHeight = vertical ? p4.y - p3.y : p4.x - p3.x;
+	float wallHeight_w = maxXorY - info.minXorY;
+	float wallDepth_w = maxZ - info.minZ;
+	int wallDepth = wallDepth_w * wallHeight / wallHeight_w;
+	info.deltaXorY = (maxXorY - info.minXorY) / wallHeight;
+	info.deltaZ = (maxZ - info.minZ) / wallDepth;
+
+	// Return information as a struct.
+	info.size = Size(wallDepth, wallHeight);
+	info.vertical = vertical;
+	return info;
+}
+
+void mapWallBackwards(string outputImageFilename, Point p1, Point p2, bool vertical)
+{
+	// Backwards map each wall pixel and calculate it's color using linear interpolation
+	MappingInfo mappingInfo = setupBackwardsMapping(p1, p2, vertical);
+	Mat wallDrawing = Mat::zeros(mappingInfo.size, CV_8UC3);
+	for(int wallX = 0; wallX < mappingInfo.size.width; wallX++)
+	{
+		for(int wallY = 0; wallY <  mappingInfo.size.height; wallY++)
 		{
-			float y = minY + deltaY * wallY;
-			float z = minZ + deltaZ * wallX;
-			Point2f p = mapBackwards(Point3f(x, y, z), focalLength);
+			Point wallPoint = Point(wallX, wallY);
+			Point3f p3f = mapWallPixelBackwards(wallPoint, mappingInfo);
+			Point2f p = mapBackwards(p3f, mappingInfo.focalLength);
 			if(p.x >= 0 && p.y >= 0 && p.x < originalImage.cols - 1 && p.y < originalImage.rows - 1)
 			{
 				wallDrawing.at<Vec3b>(wallY, wallX) = GetPixelInterpolated(p);
 			}
 		}
 	}
-	return wallDrawing;
+
+	// Write image to file. Record wall's real world coordinates and camera coordinates.
+	imwrite(outputImageFilename, wallDrawing);
+	printf("SHAPE 4\n");
+	printf("%.2f %.2f %.2f %.1f %.1f\n",   mappingInfo.vx3.x, -mappingInfo.vx3.y, mappingInfo.vx3.z, 1.0f, 1.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n",   mappingInfo.vx4.x, -mappingInfo.vx4.y, mappingInfo.vx4.z, 1.0f, 0.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n",   mappingInfo.vx2.x, -mappingInfo.vx2.y, mappingInfo.vx2.z, 0.0f, 1.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n\n", mappingInfo.vx1.x, -mappingInfo.vx1.y, mappingInfo.vx1.z, 0.0f, 0.0f);
 }
 
-void drawPoints2()
+void applyTransformations()
 {
 	Mat drawing = originalImage.clone();
 	circle(drawing, points[0], 2, Scalar(255, 255, 255), CV_FILLED);
@@ -210,15 +257,11 @@ void drawPoints2()
 		Point pt2 = calcRectIntersection(points[i]);
 		line(drawing, points[i], pt2, Scalar(255, 255, 255), 1);
 	}
-	Mat wallDrawing = mapWallBackwards(drawing);
-	imshow("Display Image", drawing);
-	imshow("Wall", wallDrawing);
+	mapWallBackwards("left.jpg", points[1], points[2], true);
+	mapWallBackwards("right.jpg", points[4], points[3], true);
+	mapWallBackwards("top.jpg", points[1], points[4], false);
+	mapWallBackwards("bottom.jpg", points[2], points[3], false);
 }
-
-//void addSeed(int x, int y, bool foreground, cv::Vec<unsigned char, 3> color)
-//{
-//	seeds.push_back((Seed){x, y, foreground, color});
-//}
 
 bool mouseDown;
 
@@ -276,6 +319,26 @@ void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 	}
 }
 
+void glueBillboardsToImage(string filename)
+{
+	//threshold image
+	Mat img, thresholdedImage, thresholdedImage2;
+	img = imread(filename);
+
+	// Threshold image
+	inRange(img, Scalar(0, 0, 0), Scalar(10, 10, 10), thresholdedImage);
+	bitwise_not(thresholdedImage, thresholdedImage);
+
+	imshow("Thresholded image", thresholdedImage);
+
+//	// Find contours
+//	Mat img_copy = thresholdedImage.clone();
+//
+//	vector<Vec4i> hierarchy;
+//	vector<vector<Point> > contours;
+//	findContours(img_copy, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE);
+}
+
 int main(int argc, char** argv )
 {
 	if ( argc < 2 )
@@ -283,6 +346,11 @@ int main(int argc, char** argv )
 		printf("usage: DisplayImage.out <Image_Path> <Settings_Path>\n");
 		return -1;
 	}
+
+//	glueBillboardsToImage(argv[1]);
+//	waitKey(0);
+//	return 0;
+
 	printf("Welcome to TIP Setup. Click to move points.\n");
 
 	originalImage = imread(argv[1], 1);
@@ -308,7 +376,7 @@ int main(int argc, char** argv )
 			break;
 		else
 		{
-			drawPoints2();
+			applyTransformations();
 		}
 	}
 	if(argc >= 3)
