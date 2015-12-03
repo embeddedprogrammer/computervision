@@ -6,12 +6,14 @@
 using namespace std;
 using namespace cv;
 
-Mat originalImage;
+Mat originalImage, imageBillboards;
 
 #define ENTER 10
 #define ESC 27
 
+// User parameters
 Point points[5]; //Vanishing and corner points
+float focalLength = 700; //In pixels
 
 void initPoints()
 {
@@ -92,28 +94,32 @@ void drawPoints()
 	imshow("Display Image", drawing);
 }
 
-Point2f mapBackwards(Point3f voxel, float focalLength)
+Point2f mapBackwards(Point3f voxel)
 {
 	float x = voxel.x * focalLength / voxel.z;
 	float y = voxel.y * focalLength / voxel.z;
 	return Point2f(x + points[0].x, y + points[0].y);
 }
 
-Point3f mapForwardsFromDepth(Point2f pixel, float focalLength, float depth)
+Point3f mapForwardsFromDepth(Point2f pixel, float depth)
 {
 	float x = (pixel.x - points[0].x) * depth / focalLength;
 	float y = (pixel.y - points[0].y) * depth / focalLength;
 	return Point3f(x, y, depth);
 }
 
-Point3f mapForwards(Point2f pixel, float focalLength, float xw_or_yw, bool vertical)
+float getDepth(float xw_or_yw, float xc_or_yc, bool vertical)
 {
-	float z;
 	if(vertical)
-		z = focalLength * xw_or_yw / (pixel.x - points[0].x);
+		return focalLength * xw_or_yw / (xc_or_yc - points[0].x);
 	else
-		z = focalLength * xw_or_yw / (pixel.y - points[0].y);
-	return mapForwardsFromDepth(pixel, focalLength, z);
+		return focalLength * xw_or_yw / (xc_or_yc - points[0].y);
+}
+
+Point3f mapForwards(Point2f pixel, float xw_or_yw, bool vertical)
+{
+	float z = getDepth(xw_or_yw, vertical ? pixel.x : pixel.y, vertical);
+	return mapForwardsFromDepth(pixel, z);
 }
 
 float mixValues(float c1, float c2, float c3, float c4, float f1, float f2, float f3, float f4)
@@ -154,7 +160,6 @@ typedef struct
 	Point3f vx4;
 	Size size;
 	bool vertical;
-	float focalLength;
 	float wallDistance;
 	float minXorY;
 	float minZ;
@@ -180,33 +185,58 @@ Point3f mapWallPixelBackwards(Point wallPoint, MappingInfo info)
 	return Point3f(x, y, z);
 }
 
-MappingInfo setupBackwardsMapping(Point p1, Point p2, bool vertical)
+MappingInfo setupBackwardsMapping(int direction)
 {
 	MappingInfo info;
 
 	// Parameters to setup spidery mesh
 	float depth = 10;
-	info.focalLength = 700; //pixels
+
+	// From direction, choose two initial points
+	if(direction == 0)
+	{
+		info.p1 = points[1];
+		info.p2 = points[4];
+		info.vertical = false;
+	}
+	else if(direction == 1)
+	{
+		info.p1 = points[4];
+		info.p2 = points[3];
+		info.vertical = true;
+	}
+	else if(direction == 2)
+	{
+		info.p1 = points[2];
+		info.p2 = points[3];
+		info.vertical = false;
+	}
+	else if(direction == 3)
+	{
+		info.p1 = points[1];
+		info.p2 = points[2];
+		info.vertical = true;
+	}
 
 	// From initial two points, calculate the other two points that form the wall.
-	Point p3 = calcLineIntersection(p1, vertical);
-	Point p4 = calcLineIntersection(p2, vertical);
+	info.p3 = calcLineIntersection(info.p1, info.vertical);
+	info.p4 = calcLineIntersection(info.p2, info.vertical);
 
 	// Find the corresponding real world coordinates for the corners of the wall.
-	info.vx1 = mapForwardsFromDepth(p1, info.focalLength, depth);
-	info.vx2 = mapForwardsFromDepth(p2, info.focalLength, depth);
-	info.wallDistance = vertical ? info.vx1.x : info.vx1.y;
-	info.vx3 = mapForwards(Point2f(p3.x, p3.y), info.focalLength, info.wallDistance, vertical);
-	info.vx4 = mapForwards(Point2f(p4.x, p4.y), info.focalLength, info.wallDistance, vertical);
+	info.vx1 = mapForwardsFromDepth(info.p1, depth);
+	info.vx2 = mapForwardsFromDepth(info.p2, depth);
+	info.wallDistance = info.vertical ? info.vx1.x : info.vx1.y;
+	info.vx3 = mapForwards(Point2f(info.p3.x, info.p3.y), info.wallDistance, info.vertical);
+	info.vx4 = mapForwards(Point2f(info.p4.x, info.p4.y), info.wallDistance, info.vertical);
 
 	// Find the wall's min and max real world coordinates (ie. it's real-world bounding box).
-	info.minXorY = vertical ? info.vx3.y : info.vx3.x;
-	float maxXorY = vertical ? info.vx2.y : info.vx2.x;
+	info.minXorY = info.vertical ? info.vx3.y : info.vx3.x;
+	float maxXorY = info.vertical ? info.vx2.y : info.vx2.x;
 	info.minZ = info.vx3.z;
 	float maxZ = info.vx2.z;
 
 	// Calculate the size of the wall in pixels.
-	int wallHeight = vertical ? p4.y - p3.y : p4.x - p3.x;
+	int wallHeight = info.vertical ? info.p4.y - info.p3.y : info.p4.x - info.p3.x;
 	float wallHeight_w = maxXorY - info.minXorY;
 	float wallDepth_w = maxZ - info.minZ;
 	int wallDepth = wallDepth_w * wallHeight / wallHeight_w;
@@ -215,14 +245,13 @@ MappingInfo setupBackwardsMapping(Point p1, Point p2, bool vertical)
 
 	// Return information as a struct.
 	info.size = Size(wallDepth, wallHeight);
-	info.vertical = vertical;
 	return info;
 }
 
-void mapWallBackwards(string outputImageFilename, Point p1, Point p2, bool vertical)
+void mapWallBackwards(string outputImageFilename, int direction)
 {
 	// Backwards map each wall pixel and calculate it's color using linear interpolation
-	MappingInfo mappingInfo = setupBackwardsMapping(p1, p2, vertical);
+	MappingInfo mappingInfo = setupBackwardsMapping(direction);
 	Mat wallDrawing = Mat::zeros(mappingInfo.size, CV_8UC3);
 	for(int wallX = 0; wallX < mappingInfo.size.width; wallX++)
 	{
@@ -230,7 +259,7 @@ void mapWallBackwards(string outputImageFilename, Point p1, Point p2, bool verti
 		{
 			Point wallPoint = Point(wallX, wallY);
 			Point3f p3f = mapWallPixelBackwards(wallPoint, mappingInfo);
-			Point2f p = mapBackwards(p3f, mappingInfo.focalLength);
+			Point2f p = mapBackwards(p3f);
 			if(p.x >= 0 && p.y >= 0 && p.x < originalImage.cols - 1 && p.y < originalImage.rows - 1)
 			{
 				wallDrawing.at<Vec3b>(wallY, wallX) = GetPixelInterpolated(p);
@@ -241,10 +270,87 @@ void mapWallBackwards(string outputImageFilename, Point p1, Point p2, bool verti
 	// Write image to file. Record wall's real world coordinates and camera coordinates.
 	imwrite(outputImageFilename, wallDrawing);
 	printf("SHAPE 4\n");
-	printf("%.2f %.2f %.2f %.1f %.1f\n",   mappingInfo.vx3.x, -mappingInfo.vx3.y, mappingInfo.vx3.z, 1.0f, 1.0f);
-	printf("%.2f %.2f %.2f %.1f %.1f\n",   mappingInfo.vx4.x, -mappingInfo.vx4.y, mappingInfo.vx4.z, 1.0f, 0.0f);
-	printf("%.2f %.2f %.2f %.1f %.1f\n",   mappingInfo.vx2.x, -mappingInfo.vx2.y, mappingInfo.vx2.z, 0.0f, 1.0f);
-	printf("%.2f %.2f %.2f %.1f %.1f\n\n", mappingInfo.vx1.x, -mappingInfo.vx1.y, mappingInfo.vx1.z, 0.0f, 0.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n", mappingInfo.vx3.x, -mappingInfo.vx3.y, mappingInfo.vx3.z, 0.0f, 0.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n", mappingInfo.vx4.x, -mappingInfo.vx4.y, mappingInfo.vx4.z, 0.0f, 1.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n", mappingInfo.vx2.x, -mappingInfo.vx2.y, mappingInfo.vx2.z, 1.0f, 1.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n", mappingInfo.vx1.x, -mappingInfo.vx1.y, mappingInfo.vx1.z, 1.0f, 0.0f);
+	printf("%s\n\n", outputImageFilename.c_str());
+}
+
+float getDepth(float XorYc, int wallDirection)
+{
+	MappingInfo mappingInfo = setupBackwardsMapping(wallDirection);
+
+	if((wallDirection == 0 && XorYc < points[0].y)
+	 || (wallDirection == 1 && XorYc > points[0].x)
+	 || (wallDirection == 2 && XorYc > points[0].y)
+	 || (wallDirection == 3 && XorYc < points[0].x))
+		return getDepth(mappingInfo.wallDistance, XorYc, mappingInfo.vertical);
+	else
+		return -1;
+}
+
+float getDepth(Rect rect)
+{
+	float d[4];
+	d[0] = getDepth(rect.y, 0);
+	d[1] = getDepth(rect.x + rect.width, 1);
+	d[2] = getDepth(rect.y + rect.height, 2);
+	d[3] = getDepth(rect.x, 3);
+	float minDepth;
+	int minDepthIndex = -1;
+	for(int i = 0; i < 4; i++)
+	{
+		float depth = d[i];
+		if(depth > 0 && (minDepthIndex == -1 || depth < minDepth))
+		{
+			minDepth = depth;
+			minDepthIndex = i;
+		}
+	}
+	return minDepth;
+}
+
+void glueBillboardsToImage()
+{
+	// Threshold image
+	Mat thresholdedImage;
+	inRange(imageBillboards, Scalar(0, 0, 0), Scalar(20, 20, 20), thresholdedImage);
+	bitwise_not(thresholdedImage, thresholdedImage);
+
+	imshow("Thresholded image", thresholdedImage);
+
+	// Find contours
+	Mat img_copy = thresholdedImage.clone();
+
+	vector<Vec4i> hierarchy;
+	vector<vector<Point> > contours;
+	findContours(img_copy, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
+
+	//Find bounding box
+	for(int i = 0; i < contours.size(); i++)
+	{
+		Rect rect = boundingRect(contours[i]);
+		float depth = getDepth(rect);
+
+		Point3f vx1 = mapForwardsFromDepth(Point(rect.x,              rect.y),               depth);
+		Point3f vx2 = mapForwardsFromDepth(Point(rect.x,              rect.y + rect.height), depth);
+		Point3f vx3 = mapForwardsFromDepth(Point(rect.x + rect.width, rect.y + rect.height), depth);
+		Point3f vx4 = mapForwardsFromDepth(Point(rect.x + rect.width, rect.y),               depth);
+
+		// Write image to file. Record wall's real world coordinates and camera coordinates.
+		Mat croppedImage = imageBillboards(rect);
+		char outputImageFilename[20];
+		sprintf(outputImageFilename, "billboard%d.jpg", i);
+		imwrite(outputImageFilename, croppedImage);
+
+		printf("SHAPE 4\n");
+		printf("%.2f %.2f %.2f %.1f %.1f\n", vx1.x, -vx1.y, vx1.z, 0.0f, 0.0f);
+		printf("%.2f %.2f %.2f %.1f %.1f\n", vx2.x, -vx2.y, vx2.z, 0.0f, 1.0f);
+		printf("%.2f %.2f %.2f %.1f %.1f\n", vx3.x, -vx3.y, vx3.z, 1.0f, 1.0f);
+		printf("%.2f %.2f %.2f %.1f %.1f\n", vx4.x, -vx4.y, vx4.z, 1.0f, 0.0f);
+		printf("%s\n\n", outputImageFilename);
+	}
 }
 
 void applyTransformations()
@@ -257,10 +363,11 @@ void applyTransformations()
 		Point pt2 = calcRectIntersection(points[i]);
 		line(drawing, points[i], pt2, Scalar(255, 255, 255), 1);
 	}
-	mapWallBackwards("left.jpg", points[1], points[2], true);
-	mapWallBackwards("right.jpg", points[4], points[3], true);
-	mapWallBackwards("top.jpg", points[1], points[4], false);
-	mapWallBackwards("bottom.jpg", points[2], points[3], false);
+	mapWallBackwards("top.jpg", 0);
+	mapWallBackwards("right.jpg", 1);
+	mapWallBackwards("bottom.jpg", 2);
+	mapWallBackwards("left.jpg", 3);
+	glueBillboardsToImage();
 }
 
 bool mouseDown;
@@ -269,7 +376,7 @@ void moveClosestPoint(Point clickPoint)
 {
 	int minDistSquared;
 	int minDistIndex = -1;
-	for(int i = 0; i < 5; i++)
+	for(int i = 0; i < 6; i++)
 	{
 		Point p = points[i];
 		int distSquared = (p.x - clickPoint.x) * (p.x - clickPoint.x) + (p.y - clickPoint.y) * (p.y - clickPoint.y);
@@ -319,41 +426,19 @@ void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 	}
 }
 
-void glueBillboardsToImage(string filename)
-{
-	//threshold image
-	Mat img, thresholdedImage, thresholdedImage2;
-	img = imread(filename);
-
-	// Threshold image
-	inRange(img, Scalar(0, 0, 0), Scalar(10, 10, 10), thresholdedImage);
-	bitwise_not(thresholdedImage, thresholdedImage);
-
-	imshow("Thresholded image", thresholdedImage);
-
-//	// Find contours
-//	Mat img_copy = thresholdedImage.clone();
-//
-//	vector<Vec4i> hierarchy;
-//	vector<vector<Point> > contours;
-//	findContours(img_copy, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE);
-}
-
 int main(int argc, char** argv )
 {
-	if ( argc < 2 )
+	if ( argc < 4 )
 	{
-		printf("usage: DisplayImage.out <Image_Path> <Settings_Path>\n");
+		printf("usage: DisplayImage.out <Image_Path> <Billboard Path> <Settings_Path>\n");
 		return -1;
 	}
-
-//	glueBillboardsToImage(argv[1]);
-//	waitKey(0);
-//	return 0;
 
 	printf("Welcome to TIP Setup. Click to move points.\n");
 
 	originalImage = imread(argv[1], 1);
+	imageBillboards = imread(argv[2], 1);
+
 	if ( !originalImage.data )
 	{
 		printf("No image data \n");
@@ -364,7 +449,7 @@ int main(int argc, char** argv )
 	if(argc < 3)
 		initPoints();
 	else
-		readSettingsFile(argv[2]);
+		readSettingsFile(argv[3]);
 	drawPoints();
 
 	std::string lineInput = "";
@@ -374,12 +459,12 @@ int main(int argc, char** argv )
 		char c = waitKey(0);
 		if(c == ESC)
 			break;
-		else
+		else if(c == ENTER)
 		{
 			applyTransformations();
 		}
 	}
 	if(argc >= 3)
-		saveSettingsFile(argv[2]);
+		saveSettingsFile(argv[3]);
 	return 0;
 }
