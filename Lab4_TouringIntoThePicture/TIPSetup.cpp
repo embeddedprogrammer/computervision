@@ -270,10 +270,10 @@ void mapWallBackwards(string outputImageFilename, int direction)
 	// Write image to file. Record wall's real world coordinates and camera coordinates.
 	imwrite(outputImageFilename, wallDrawing);
 	printf("SHAPE 4\n");
-	printf("%.2f %.2f %.2f %.1f %.1f\n", mappingInfo.vx3.x, -mappingInfo.vx3.y, mappingInfo.vx3.z, 0.0f, 0.0f);
-	printf("%.2f %.2f %.2f %.1f %.1f\n", mappingInfo.vx4.x, -mappingInfo.vx4.y, mappingInfo.vx4.z, 0.0f, 1.0f);
-	printf("%.2f %.2f %.2f %.1f %.1f\n", mappingInfo.vx2.x, -mappingInfo.vx2.y, mappingInfo.vx2.z, 1.0f, 1.0f);
-	printf("%.2f %.2f %.2f %.1f %.1f\n", mappingInfo.vx1.x, -mappingInfo.vx1.y, mappingInfo.vx1.z, 1.0f, 0.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n", mappingInfo.vx3.x, -mappingInfo.vx3.y, -mappingInfo.vx3.z, 0.0f, 0.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n", mappingInfo.vx4.x, -mappingInfo.vx4.y, -mappingInfo.vx4.z, 0.0f, 1.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n", mappingInfo.vx2.x, -mappingInfo.vx2.y, -mappingInfo.vx2.z, 1.0f, 1.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n", mappingInfo.vx1.x, -mappingInfo.vx1.y, -mappingInfo.vx1.z, 1.0f, 0.0f);
 	printf("%s\n\n", outputImageFilename.c_str());
 }
 
@@ -345,12 +345,34 @@ void glueBillboardsToImage()
 		imwrite(outputImageFilename, croppedImage);
 
 		printf("SHAPE 4\n");
-		printf("%.2f %.2f %.2f %.1f %.1f\n", vx1.x, -vx1.y, vx1.z, 0.0f, 0.0f);
-		printf("%.2f %.2f %.2f %.1f %.1f\n", vx2.x, -vx2.y, vx2.z, 0.0f, 1.0f);
-		printf("%.2f %.2f %.2f %.1f %.1f\n", vx3.x, -vx3.y, vx3.z, 1.0f, 1.0f);
-		printf("%.2f %.2f %.2f %.1f %.1f\n", vx4.x, -vx4.y, vx4.z, 1.0f, 0.0f);
+		printf("%.2f %.2f %.2f %.1f %.1f\n", vx1.x, -vx1.y, -vx1.z, 0.0f, 0.0f);
+		printf("%.2f %.2f %.2f %.1f %.1f\n", vx2.x, -vx2.y, -vx2.z, 0.0f, 1.0f);
+		printf("%.2f %.2f %.2f %.1f %.1f\n", vx3.x, -vx3.y, -vx3.z, 1.0f, 1.0f);
+		printf("%.2f %.2f %.2f %.1f %.1f\n", vx4.x, -vx4.y, -vx4.z, 1.0f, 0.0f);
 		printf("%s\n\n", outputImageFilename);
 	}
+}
+
+void cropEnd()
+{
+	//Crop end
+	Rect rect = Rect(points[1], points[3]);
+	Mat croppedImage = originalImage(rect);
+	string outputImageFilename = "back.jpg";
+
+	Point3f vx1 = mapForwardsFromDepth(points[1], 10);
+	Point3f vx2 = mapForwardsFromDepth(points[2], 10);
+	Point3f vx3 = mapForwardsFromDepth(points[3], 10);
+	Point3f vx4 = mapForwardsFromDepth(points[4], 10);
+
+	// Write image to file. Record wall's real world coordinates and camera coordinates.
+	imwrite(outputImageFilename, croppedImage);
+	printf("SHAPE 4\n");
+	printf("%.2f %.2f %.2f %.1f %.1f\n", vx1.x, -vx1.y, -vx1.z, 0.0f, 0.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n", vx2.x, -vx2.y, -vx2.z, 0.0f, 1.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n", vx3.x, -vx3.y, -vx3.z, 1.0f, 1.0f);
+	printf("%.2f %.2f %.2f %.1f %.1f\n", vx4.x, -vx4.y, -vx4.z, 1.0f, 0.0f);
+	printf("%s\n\n", outputImageFilename.c_str());
 }
 
 void applyTransformations()
@@ -368,6 +390,7 @@ void applyTransformations()
 	mapWallBackwards("bottom.jpg", 2);
 	mapWallBackwards("left.jpg", 3);
 	glueBillboardsToImage();
+	cropEnd();
 }
 
 bool mouseDown;
