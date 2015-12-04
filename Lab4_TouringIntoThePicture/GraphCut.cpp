@@ -22,13 +22,15 @@ typedef struct
 
 typedef std::vector<Seed> SeedType;
 
-int scale = 1;
+float scale = 1;
 
 void imshow2(string name, Mat image)
 {
 	Mat resizedImage;
-	scale = image.cols / 400;
-    resize(image, resizedImage, Size(image.cols / scale, image.rows / scale));
+	float scaleX = 500.0f / image.cols;
+	float scaleY = 600.0f / image.rows;
+	scale = scaleX < scaleY ? scaleX : scaleY;
+    resize(image, resizedImage, Size(image.cols * scale, image.rows * scale));
 	imshow(name, resizedImage);
 }
 
@@ -172,34 +174,20 @@ void displayResults(Mat image, Mat hsv, SeedType seeds, int lambda)
 	// Calculate max-flow min-cut.
 	printf("Calculating max-flow min-cut\n");
 	int flow = g->maxflow();
-	Mat result = Mat::zeros(image.size(), image.type());
-	Mat resultInv = Mat::zeros(image.size(), image.type());
+	Mat result = Mat::zeros(image.size(), CV_8UC4);
+	Mat resultInv = Mat::zeros(image.size(), CV_8UC4);
 	for( int y = 0; y < image.rows; y++ )
 		for( int x = 0; x < image.cols; x++ )
 		{
-			if(g->what_segment(getNodeId(image, x, y)) == GraphType::SOURCE) //Foreground
-			{
-				result.at<Vec3b>(y,x)[0] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[0]);
-				result.at<Vec3b>(y,x)[1] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[1]);
-				result.at<Vec3b>(y,x)[2] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[2]);
-				resultInv.at<Vec3b>(y,x)[0] = 0;
-				resultInv.at<Vec3b>(y,x)[1] = 0;
-				resultInv.at<Vec3b>(y,x)[2] = 0;
-			}
-			else
-			{
-				result.at<Vec3b>(y,x)[0] = 0;
-				result.at<Vec3b>(y,x)[1] = 0;
-				result.at<Vec3b>(y,x)[2] = 0;
-				resultInv.at<Vec3b>(y,x)[0] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[0]);
-				resultInv.at<Vec3b>(y,x)[1] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[1]);
-				resultInv.at<Vec3b>(y,x)[2] = saturate_cast<uchar>(image.at<Vec3b>(y,x)[2]);
-			}
+			Vec3b origPixel = image.at<Vec3b>(y,x);
+			int alpha = (g->what_segment(getNodeId(image, x, y)) == GraphType::SOURCE);
+			result.at<Vec4b>(y,x)    = Vec4b(origPixel[0] * alpha,       origPixel[1] * alpha,       origPixel[2] * alpha,       255 * alpha);
+			resultInv.at<Vec4b>(y,x) = Vec4b(origPixel[0] * (1 - alpha), origPixel[1] * (1 - alpha), origPixel[2] * (1 - alpha), 255 * (1 - alpha));
 		}
 
 	imshow2("result", result);
-	imwrite("result.jpg", result);
-	imwrite("resultInv.jpg", resultInv);
+	imwrite("result.png", result);
+	imwrite("resultInv.png", resultInv);
 }
 
 // Priors
@@ -217,7 +205,7 @@ void addSeed(int x, int y, bool foreground, cv::Vec<unsigned char, 3> color)
 #define ESC 27
 
 int mouseDown;
-Mat originalImage;
+Mat image2;
 Mat originalImage;
 Mat hsvImage;
 GraphType* graph;
@@ -226,8 +214,8 @@ int lambdaSlider = 100;
 
 void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 {
-	x *= scale;
-	y *= scale;
+	x = (((float)x) / scale);
+	y = (((float)y) / scale);
 	if(event == EVENT_LBUTTONDOWN)
 		mouseDown = 1;
 	else if(event == EVENT_RBUTTONDOWN)
@@ -244,8 +232,8 @@ void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 			addSeed(x, y, false, hsvImage.at<Vec3b>(y,x));
 
 		Scalar color = (mouseDown == 1) ? Scalar(255, 0, 0) : Scalar(0, 0, 255);
-		circle(originalImage, Point(x, y), 3 * scale, color, CV_FILLED);
-		imshow2("Display Image", originalImage);
+		circle(image2, Point(x, y), 3.0f / scale, color, CV_FILLED);
+		imshow2("Display Image", image2);
 	}
 }
 
@@ -260,7 +248,7 @@ int main(int argc, char** argv )
 
 	originalImage = imread(argv[1], 1);
 	cvtColor(originalImage, hsvImage, COLOR_BGR2HSV);
-	originalImage = originalImage.clone();
+	image2 = originalImage.clone();
 
 	if ( !originalImage.data )
 	{
@@ -269,7 +257,7 @@ int main(int argc, char** argv )
 	}
 	namedWindow("Display Image", WINDOW_AUTOSIZE );
 	createTrackbar("Lambda", "Display Image", &lambdaSlider, 200);
-	imshow2("Display Image", originalImage);
+	imshow2("Display Image", image2);
 	setMouseCallback("Display Image", CallBackFunc, NULL);
 
 	std::string lineInput = "";

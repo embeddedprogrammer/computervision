@@ -127,24 +127,25 @@ float mixValues(float c1, float c2, float c3, float c4, float f1, float f2, floa
 	return c1*f1 + c2*f2 + c3*f3 + c4*f4;
 }
 
-Vec3b mixPixels(Vec3b c1, Vec3b c2, Vec3b c3, Vec3b c4, float f1, float f2, float f3, float f4)
+Vec4b mixPixels(Vec4b c1, Vec4b c2, Vec4b c3, Vec4b c4, float f1, float f2, float f3, float f4)
 {
-	return Vec3b(mixValues(c1[0], c2[0], c3[0], c4[0], f1, f2, f3, f4),
+	return Vec4b(mixValues(c1[0], c2[0], c3[0], c4[0], f1, f2, f3, f4),
 				 mixValues(c1[1], c2[1], c3[1], c4[1], f1, f2, f3, f4),
-				 mixValues(c1[2], c2[2], c3[2], c4[2], f1, f2, f3, f4));
+				 mixValues(c1[2], c2[2], c3[2], c4[2], f1, f2, f3, f4),
+				 mixValues(c1[3], c2[3], c3[3], c4[3], f1, f2, f3, f4));
 }
 
-Vec3b GetPixelInterpolated(Point2f p)
+Vec4b GetPixelInterpolated(Point2f p)
 {
 	int xTruncated = p.x;
 	int yTruncated = p.y;
 	float xFrac = p.x - xTruncated;
 	float yFrac = p.y - yTruncated;
-	Vec3b color11 = originalImage.at<Vec3b>(yTruncated,     xTruncated);
-	Vec3b color12 = originalImage.at<Vec3b>(yTruncated,     xTruncated + 1);
-	Vec3b color21 = originalImage.at<Vec3b>(yTruncated + 1, xTruncated);
-	Vec3b color22 = originalImage.at<Vec3b>(yTruncated + 1, xTruncated + 1);
-	Vec3b mix = mixPixels(color11, color12, color21, color22, (1 - xFrac)*(1 - yFrac), xFrac*(1 - yFrac), (1 - xFrac)*yFrac, xFrac*yFrac);
+	Vec4b color11 = originalImage.at<Vec4b>(yTruncated,     xTruncated);
+	Vec4b color12 = originalImage.at<Vec4b>(yTruncated,     xTruncated + 1);
+	Vec4b color21 = originalImage.at<Vec4b>(yTruncated + 1, xTruncated);
+	Vec4b color22 = originalImage.at<Vec4b>(yTruncated + 1, xTruncated + 1);
+	Vec4b mix = mixPixels(color11, color12, color21, color22, (1 - xFrac)*(1 - yFrac), xFrac*(1 - yFrac), (1 - xFrac)*yFrac, xFrac*yFrac);
 	return mix;
 }
 
@@ -252,7 +253,7 @@ void mapWallBackwards(string outputImageFilename, int direction)
 {
 	// Backwards map each wall pixel and calculate it's color using linear interpolation
 	MappingInfo mappingInfo = setupBackwardsMapping(direction);
-	Mat wallDrawing = Mat::zeros(mappingInfo.size, CV_8UC3);
+	Mat wallDrawing = Mat::zeros(mappingInfo.size, CV_8UC4);
 	for(int wallX = 0; wallX < mappingInfo.size.width; wallX++)
 	{
 		for(int wallY = 0; wallY <  mappingInfo.size.height; wallY++)
@@ -262,7 +263,7 @@ void mapWallBackwards(string outputImageFilename, int direction)
 			Point2f p = mapBackwards(p3f);
 			if(p.x >= 0 && p.y >= 0 && p.x < originalImage.cols - 1 && p.y < originalImage.rows - 1)
 			{
-				wallDrawing.at<Vec3b>(wallY, wallX) = GetPixelInterpolated(p);
+				wallDrawing.at<Vec4b>(wallY, wallX) = GetPixelInterpolated(p);
 			}
 		}
 	}
@@ -341,7 +342,7 @@ void glueBillboardsToImage()
 		// Write image to file. Record wall's real world coordinates and camera coordinates.
 		Mat croppedImage = imageBillboards(rect);
 		char outputImageFilename[20];
-		sprintf(outputImageFilename, "billboard%d.jpg", i);
+		sprintf(outputImageFilename, "billboard%d.png", i);
 		imwrite(outputImageFilename, croppedImage);
 
 		printf("SHAPE 4\n");
@@ -358,7 +359,7 @@ void cropEnd()
 	//Crop end
 	Rect rect = Rect(points[1], points[3]);
 	Mat croppedImage = originalImage(rect);
-	string outputImageFilename = "back.jpg";
+	string outputImageFilename = "back.png";
 
 	Point3f vx1 = mapForwardsFromDepth(points[1], 10);
 	Point3f vx2 = mapForwardsFromDepth(points[2], 10);
@@ -385,10 +386,10 @@ void applyTransformations()
 		Point pt2 = calcRectIntersection(points[i]);
 		line(drawing, points[i], pt2, Scalar(255, 255, 255), 1);
 	}
-	mapWallBackwards("top.jpg", 0);
-	mapWallBackwards("right.jpg", 1);
-	mapWallBackwards("bottom.jpg", 2);
-	mapWallBackwards("left.jpg", 3);
+	mapWallBackwards("top.png", 0);
+	mapWallBackwards("right.png", 1);
+	mapWallBackwards("bottom.png", 2);
+	mapWallBackwards("left.png", 3);
 	glueBillboardsToImage();
 	cropEnd();
 }
@@ -459,8 +460,8 @@ int main(int argc, char** argv )
 
 	printf("Welcome to TIP Setup. Click to move points.\n");
 
-	originalImage = imread(argv[1], 1);
-	imageBillboards = imread(argv[2], 1);
+	originalImage = imread(argv[1], -1);
+	imageBillboards = imread(argv[2], -1);
 
 	if ( !originalImage.data )
 	{
