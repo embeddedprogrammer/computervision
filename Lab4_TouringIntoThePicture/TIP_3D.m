@@ -14,7 +14,7 @@ function TIP_3D
 			p = nudgeCorners(p); 
 			
 			name = fscanf(fileID, '%s\n', 1);
-			[im, ~, imAlpha]  = imread('result.png');
+			[im, ~, imAlpha]  = imread(name);
 			if(isempty(imAlpha)) %If no alpha channel, create by setting black pixels to transparent.
 				imAlpha = fudgeAlphaChannel(im);
 			end			

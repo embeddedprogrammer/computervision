@@ -27,8 +27,8 @@ float scale = 1;
 void imshow2(string name, Mat image)
 {
 	Mat resizedImage;
-	float scaleX = 500.0f / image.cols;
-	float scaleY = 600.0f / image.rows;
+	float scaleX = 700.0f / image.cols;
+	float scaleY = 800.0f / image.rows;
 	scale = scaleX < scaleY ? scaleX : scaleY;
     resize(image, resizedImage, Size(image.cols * scale, image.rows * scale));
 	imshow(name, resizedImage);
@@ -102,7 +102,10 @@ DistFB findDistFB(cv::Vec<unsigned char, 3> val, SeedType seeds)
 {
 	int minDistForeground = 255;
 	int minDistBackground = 255;
-	for(int i = 0; i < seeds.size(); i++)
+	int size = seeds.size();
+	if(size > 10)
+		size = 10;
+	for(int i = 0; i < size; i++)
 	{
 		Seed s = seeds.at(i);
 		int dist = getDiffHSV(val, s.color);
@@ -120,9 +123,47 @@ DistFB findDistFB(cv::Vec<unsigned char, 3> val, SeedType seeds)
 	return (DistFB){minDistForeground, minDistBackground};
 }
 
-void displayResults(Mat image, Mat hsv, SeedType seeds, int lambda)
+void displayCost(Mat image, Mat hsv, SeedType seeds, int lambda, int reductionFactor)
 {
-	GraphType* g = new GraphType(image.rows * image.cols, 2 * image.rows * image.cols - image.rows - image.cols);
+	if(reductionFactor > 1)
+	{
+		Mat smallImage, smallHsv;
+		resize(image, smallImage, Size(image.cols / reductionFactor, image.rows / reductionFactor));
+		resize(image, smallHsv,   Size(image.cols / reductionFactor, image.rows / reductionFactor));
+		image = smallImage;
+		hsv = smallHsv;
+	}
+
+	// Add edges with corresponding cost
+	printf("Calculating edge weights\n");
+	Mat cost = Mat::zeros(image.size(), image.type());
+	for(int y = 0; y < image.rows; y++)
+		for(int x = 0; x < image.cols; x++)
+		{
+			int c1, c2 = 0;
+			if(x < image.cols - 1)
+				c1 = getCost(image.at<Vec3b>(y, x), image.at<Vec3b>(y + 1, x)) / 10;
+			if(y < image.rows - 1)
+				c2 = getCost(image.at<Vec3b>(y, x), image.at<Vec3b>(y, x + 1)) / 10;
+			int c = (c1 + c2) / 2;
+			cost.at<Vec3b>(y,x)[0] = saturate_cast<uchar>(c);
+			cost.at<Vec3b>(y,x)[1] = saturate_cast<uchar>(c);
+			cost.at<Vec3b>(y,x)[2] = saturate_cast<uchar>(c);
+		}
+	imshow2("cost", cost);
+}
+
+void displayResults(Mat image, Mat hsv, SeedType seeds, int lambda, int reductionFactor)
+{
+	if(reductionFactor > 1)
+	{
+		Mat smallImage, smallHsv;
+		resize(image, smallImage, Size(image.cols / reductionFactor, image.rows / reductionFactor));
+		resize(image, smallHsv,   Size(image.cols / reductionFactor, image.rows / reductionFactor));
+		image = smallImage;
+		hsv = smallHsv;
+	}
+	GraphType* g = new GraphType(image.rows * image.cols, 2 * image.rows * image.cols + 1000);
 
 	printf("Calculating sink and source weights\n");
 	Mat priors1 = Mat::zeros(image.size(), image.type());
@@ -165,10 +206,15 @@ void displayResults(Mat image, Mat hsv, SeedType seeds, int lambda)
 	for(int i = 0; i < seeds.size(); i++)
 	{
 		Seed s = seeds.at(i);
-		if(s.foreground	== 1)
-			g->add_tweights(getNodeId(image, s.x, s.y), 1000000, 0);
-		else
-			g->add_tweights(getNodeId(image, s.x, s.y), 0, 1000000);
+		int x = s.x / reductionFactor;
+		int y = s.y / reductionFactor;
+		if(x >= 0 && x < image.size().width && y >= 0 && y < image.size().height)
+		{
+			if(s.foreground)
+				g->add_tweights(getNodeId(image, x, y), 1000000, 0);
+			else
+				g->add_tweights(getNodeId(image, x, y), 0, 1000000);
+		}
 	}
 
 	// Calculate max-flow min-cut.
@@ -184,13 +230,25 @@ void displayResults(Mat image, Mat hsv, SeedType seeds, int lambda)
 			result.at<Vec4b>(y,x)    = Vec4b(origPixel[0] * alpha,       origPixel[1] * alpha,       origPixel[2] * alpha,       255 * alpha);
 			resultInv.at<Vec4b>(y,x) = Vec4b(origPixel[0] * (1 - alpha), origPixel[1] * (1 - alpha), origPixel[2] * (1 - alpha), 255 * (1 - alpha));
 		}
+	delete g;
 
 	imshow2("result", result);
 	imwrite("result.png", result);
 	imwrite("resultInv.png", resultInv);
 }
 
-// Priors
+//OPEN CV GUI INTERACTION
+
+#define ENTER 10
+#define ESC 27
+#define BACKSPACE 8
+
+int mouseDown;
+Mat image2;
+Mat originalImage;
+Mat hsvImage;
+
+int lambdaSlider = 100;
 
 SeedType seeds;
 
@@ -199,18 +257,19 @@ void addSeed(int x, int y, bool foreground, cv::Vec<unsigned char, 3> color)
 	seeds.push_back((Seed){x, y, foreground, color});
 }
 
-//OPEN CV GUI INTERACTION
-
-#define ENTER 10
-#define ESC 27
-
-int mouseDown;
-Mat image2;
-Mat originalImage;
-Mat hsvImage;
-GraphType* graph;
-
-int lambdaSlider = 100;
+void removeSeed()
+{
+	if(seeds.size() >= 1)
+		seeds.pop_back();
+	image2 = originalImage.clone();
+	for(int i = 0; i < seeds.size(); i++)
+	{
+		Seed s = seeds.at(i);
+		Scalar color = s.foreground ? Scalar(255, 0, 0) : Scalar(0, 0, 255);
+		circle(image2, Point(s.x, s.y), 3.0f / scale, color, CV_FILLED);
+	}
+	imshow2("Display Image", image2);
+}
 
 void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 {
@@ -267,11 +326,32 @@ int main(int argc, char** argv )
 		char c = waitKey(0);
 		if(c == ESC)
 			break;
-		else
+		else if(c == ENTER)
 		{
-			displayResults(originalImage, hsvImage, seeds, lambdaSlider - 100);
+			displayResults(originalImage, hsvImage, seeds, lambdaSlider - 100, 1);
+		}
+		else if(c > '1' && c <= '9')
+		{
+			displayResults(originalImage, hsvImage, seeds, lambdaSlider - 100, (c - '0'));
+		}
+		else if(c == BACKSPACE)
+		{
+			removeSeed();
+		}
+		else if(c == 'h')
+		{
+			Mat bgr;
+			Mat modified = hsvImage.clone();
+			for( int y = 0; y < modified.rows; y++ )
+				for( int x = 0; x < modified.cols; x++ )
+					modified.at<Vec3b>(y,x) = Vec3b(saturate_cast<uchar>(modified.at<Vec3b>(y,x)[0]), 128, 128);
+			cvtColor(modified, bgr, COLOR_HSV2BGR);
+			imshow2("Hue", bgr);
+		}
+		else if(c == 'c')
+		{
+			displayCost(originalImage, hsvImage, seeds, lambdaSlider - 100, 3);
 		}
 	}
-	delete graph;
 	return 0;
 }
