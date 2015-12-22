@@ -57,7 +57,8 @@ int maxVal3(int val1, int val2, int val3)
 int getDiffHSV(cv::Vec<unsigned char, 3> val1, cv::Vec<unsigned char, 3> val2)
 {
 	//For HSV, Hue range is [0,179], Saturation range is [0,255] and Value range is [0,255]
-	return abs(val1[0] - val2[0]) + abs(val1[1] - val2[1])/4 + abs(val1[2] - val2[2])/4;
+	//return abs(val1[0] - val2[0]) + abs(val1[1] - val2[1])/4 + abs(val1[2] - val2[2])/4;
+	return abs(val1[1] - val2[1]) + abs(val1[2] - val2[2]);
 }
 
 int getCost(cv::Vec<unsigned char, 3> val1, cv::Vec<unsigned char, 3> val2)

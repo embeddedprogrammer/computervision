@@ -45,9 +45,9 @@ function imAlpha = fudgeAlphaChannel(im)
 	end
 end
 function p = nudgeCorners(p)
-	%Expand corners to overlap by about 2% to reduce white lines between touching panels.
-	v1 = unit_vec(p{2} - p{1}) * .04;
-	v2 = unit_vec(p{4} - p{1}) * .04;
+	%Expand corners to overlap by about 1% to reduce white lines between touching panels.
+	v1 = unit_vec(p{2} - p{1}) * .01;
+	v2 = unit_vec(p{4} - p{1}) * .01;
 	p{1} = p{1} - v1 - v2;
 	p{2} = p{2} + v1 - v2;
 	p{3} = p{3} + v1 + v2;
