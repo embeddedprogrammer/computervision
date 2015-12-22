@@ -1,5 +1,11 @@
-function subdivide(img)
+function subdivide(name)
+	img = imread(name);
 	tic
+	n = 32; %Any more seems to result in loss of color.
+	img = round(img / n) * n;
+	imshow(img);
+	figure;
+	%return;
 	img24 = toInt24(img);
 	allClrs = reshape(img24, [size(img24, 1) * size(img24, 2), 1]);
 	clrs = unique(allClrs, 'rows');
