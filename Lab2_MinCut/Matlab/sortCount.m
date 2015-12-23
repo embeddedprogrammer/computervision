@@ -13,7 +13,8 @@ function props = sortCount(allClrs)
 			endI = i;
 			clr = clrs(startI, 1);
 			pixelList = clrs(startI:endI, 2);
-			s = struct('clr', clr, 'pixelList', pixelList);
+			count = endI - startI + 1;
+			s = struct('clr', clr, 'pixelList', pixelList, 'count', count);
 			if isempty(props)
 				props = s;
 			else
