@@ -7,26 +7,24 @@ function subdivide(name)
 	%imshow(img);
 	%return;
 	img24 = toInt24(img);
-	allClrs = reshape(img24, [size(img24, 1) * size(img24, 2), 1]);
+	allNodes = smash(img24);
+	allEdges = cncEdges(img24);
+	nodeProps = sortCount(allNodes);
+	edgeProps = sortCount(allEdges);
 	
-% 	clrs = sortrows(allClrs, 1);
-% 
-% 	size(allClrs)
-% 	size(clrs)
-% 	for i = 1:length(clrs)
-% 		allClrs(allClrs == clrs(i)) = randi(256^3) - 1;
-% 	end
-
-	props = sortCount(allClrs);
-	%length(props)
+	
+	length(nodeProps)
+	length(edgeProps)
+	toc
+	return;
 	%toc
 	%return;
-	for i = 1:length(props)
-		allClrs(props(i).pixelList) = randi(256^3) - 1;
+	for i = 1:length(nodeProps)
+		allNodes(nodeProps(i).pixelList) = randi(256^3) - 1;
 	end
 
 	
-	img24 = reshape(allClrs, [size(img24, 1), size(img24, 2)]);
+	img24 = reshape(allNodes, [size(img24, 1), size(img24, 2)]);
 	imgReproduced = toRGB(img24);
 	figure(2);
 	imshow(imgReproduced);
@@ -50,4 +48,7 @@ function img = toRGB(v)
 	v = (v - g) / 256;
 	r = v;
 	img = cat(3, uint8(r), uint8(g), uint8(b));
+end
+function sm = smash(img)
+	 sm = reshape(img, [size(img, 1) * size(img, 2), 1]);
 end
