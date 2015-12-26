@@ -18,3 +18,6 @@ props = sortCount(vals);
 count = [props(vals).count];
 
 toc
+tic
+zz = zeros([256 256 256]);
+toc

@@ -1,7 +1,7 @@
 function subdivide(name)
 	img = imread(name);
 	tic
-	n = 16; %Any more seems to result in loss of color.
+	n = 8; %Any more seems to result in loss of color.
 	img = round(img / n) * n;
 	%figure(1);
 	%imshow(img);
@@ -10,13 +10,13 @@ function subdivide(name)
 	allNodes = smash(img24);
 	allEdges = cncEdges(img24);
 	nodeProps = sortCount(allNodes);
-	edgeProps = sortCount(allEdges);
+	%edgeProps = sortCount(allEdges);
 	
 	
-	length(nodeProps)
-	length(edgeProps)
-	toc
-	return;
+% 	length(nodeProps)
+% 	length(edgeProps)
+% 	toc
+% 	return;
 	%toc
 	%return;
 	for i = 1:length(nodeProps)

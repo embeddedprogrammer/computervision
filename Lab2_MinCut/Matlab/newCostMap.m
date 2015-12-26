@@ -12,7 +12,6 @@ function newCostMap(name)
 	nodeProps = sortCount(allNodes);
 	edgeProps = sortCount(allEdges);
 	costMap = calcEdgeNodeProps(nodeProps, edgeProps);
-	%return;
 	
 	costImg = zeros([size(img, 1) size(img, 2)], 'uint8');
 	for c=1:size(img, 2)
@@ -20,12 +19,14 @@ function newCostMap(name)
 			if r < size(img, 1)
 				%cst = cost(img24(r, c), img24(r+1, c), nodeProps, edgeProps);
 				cst = costMap(clrToInt64(img24(r, c), img24(r+1, c)));
+				%cst = costOld(img(r, c, :), img(r+1, c, :));
 				costImg(r, c) = costImg(r, c) + cst;
 				costImg(r+1, c) = costImg(r+1, c) + cst;
 			end
 			if c < size(img, 2)
 				%cst = cost(img24(r, c), img24(r, c+1), nodeProps, edgeProps);
 				cst = costMap(clrToInt64(img24(r, c), img24(r, c+1)));
+				%cst = costOld(img(r, c, :), img(r, c+1, :));
 				costImg(r, c) = costImg(r, c) + cst;
 				costImg(r, c+1) = costImg(r, c+1) + cst;
 			end
@@ -74,4 +75,22 @@ function costMap = calcEdgeNodeProps(nodeProps, edgeProps)
 		cst(i) = 20*cCnt^2/(aCnt*bCnt);
 	end
 	costMap = containers.Map([edgeProps.clr], cst);
+end
+function d = clrDiff(v1, v2)
+	d = sum(abs(int16(v1 - v2)));
+end
+function c = costOld(v1, v2)
+	d = clrDiff(v1, v2);
+% 	if d < 5
+% 		c = 100;
+% 	else
+% 		c = 0;
+% 	end
+	c = uint8(50 / (d + 1));
+end
+function cncClrs = cncEdges(img)
+	 cncClrs = [clrToInt64(smash(img(:, 1:size(img,2)-1)), smash(img(:, 2:size(img,2))))
+				clrToInt64(smash(img(1:size(img,1)-1, :)), smash(img(2:size(img,1), :)))
+				clrToInt64(smash(img(:, 2:size(img,2))), smash(img(:, 1:size(img,2)-1)))
+				clrToInt64(smash(img(2:size(img,1), :)), smash(img(1:size(img,1)-1, :)))];
 end
